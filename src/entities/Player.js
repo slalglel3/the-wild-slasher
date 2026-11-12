@@ -35,6 +35,7 @@ export class Player extends Entity {
     this.invincibleTimer = 0;
     this.dashTimer = 0;
     this.whirlwindTimer = 0;
+    this.slashAnimTimer = 0; // Timer for slash animation frames
     this.animTime = 0;
 
     // Visual trails
@@ -100,6 +101,7 @@ export class Player extends Entity {
     this.mp = Math.min(this.derived.maxMp, this.mp + (this.derived.maxMp * 0.05 + 5) * dt);
 
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
+    if (this.slashAnimTimer > 0) this.slashAnimTimer -= dt;
 
     // Handle Dash mobility
     if (this.dashTimer > 0) {
@@ -176,6 +178,7 @@ export class Player extends Entity {
     // 1. Slash (Basic Attack)
     if (input.triggerSlash && this.skillSystem.canCast('SLASH', this.mp)) {
       this.skillSystem.cast('SLASH', this.derived.cdr);
+      this.slashAnimTimer = 0.22; // 3-frame attack animation duration
       audio.playSlash();
       const range = this.skillSystem.skills.SLASH.range;
       const angle = this.targetAngle;
