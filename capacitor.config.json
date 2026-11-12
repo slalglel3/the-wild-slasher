@@ -1,0 +1,14 @@
+{
+  "appId": "com.slalglel.wildslasher",
+  "appName": "The Wild Slasher",
+  "webDir": "dist",
+  "server": {
+    "cleartext": false,
+    "allowNavigation": []
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "loggingBehavior": "none"
+}

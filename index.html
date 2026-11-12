@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:;">
+  <title>The Wild Slasher - 실시간 로그라이크 액션 RPG</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="game-container">
+    <!-- Top HUD Bar -->
+    <header id="top-hud">
+      <!-- Player Profile & Vitals -->
+      <div class="hud-section hud-left">
+        <div class="profile-badge">
+          <span class="class-icon">⚔️</span>
+          <span id="hud-exp-text">Lv.1 (0.0%)</span>
+        </div>
+        <div class="bars-container">
+          <!-- HP Bar -->
+          <div class="bar-wrapper">
+            <div id="hud-hp-bar" class="fill-bar hp-fill"></div>
+            <span id="hud-hp-text" class="bar-label">100 / 100</span>
+          </div>
+          <!-- MP Bar -->
+          <div class="bar-wrapper">
+            <div id="hud-mp-bar" class="fill-bar mp-fill"></div>
+            <span id="hud-mp-text" class="bar-label">100 / 100</span>
+          </div>
+          <!-- EXP Bar -->
+          <div class="bar-wrapper exp-wrapper">
+            <div id="hud-exp-bar" class="fill-bar exp-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Biome & Rebirth Info -->
+      <div class="hud-section hud-center">
+        <div id="hud-biome-name">초원 (Grassland)</div>
+        <div class="tier-tags">
+          <span id="hud-tier-badge" class="badge-tier">Tier 20</span>
+          <span id="hud-rebirth-info" class="badge-rebirth">환생 0회</span>
+        </div>
+      </div>
+
+      <!-- Right: Action Buttons -->
+      <div class="hud-section hud-right">
+        <button id="btn-stats" class="hud-btn">스탯 (C)</button>
+        <button id="btn-inventory" class="hud-btn">가방 (I)</button>
+        <button id="btn-rebirth" class="hud-btn btn-rebirth-style">환생 (R)</button>
+        <button id="btn-bot" class="hud-btn btn-bot-style">🤖 QA봇</button>
+      </div>
+    </header>
+
+    <!-- Main Game Canvas (960 x 540 Base) -->
+    <canvas id="game-canvas" width="960" height="540"></canvas>
+
+    <!-- Modal 1: Stat Points Modal -->
+    <div id="modal-stats" class="game-modal" style="display:none;">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>캐릭터 능력치 & 스탯 투자</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="unallocated-banner">
+            잔여 스탯 포인트: <strong id="stat-unallocated">0</strong> pt
+          </div>
+          <div class="stat-rows">
+            <div class="stat-row">
+              <span class="st-name">힘 (STR)</span>
+              <span id="val-str" class="st-val">15</span>
+              <button id="btn-add-str" class="btn-add">+</button>
+            </div>
+            <div class="stat-row">
+              <span class="st-name">민첩 (DEX)</span>
+              <span id="val-dex" class="st-val">10</span>
+              <button id="btn-add-dex" class="btn-add">+</button>
+            </div>
+            <div class="stat-row">
+              <span class="st-name">지능 (INT)</span>
+              <span id="val-int" class="st-val">8</span>
+              <button id="btn-add-int" class="btn-add">+</button>
+            </div>
+            <div class="stat-row">
+              <span class="st-name">체력 (VIT)</span>
+              <span id="val-vit" class="st-val">14</span>
+              <button id="btn-add-vit" class="btn-add">+</button>
+            </div>
+            <div class="stat-row">
+              <span class="st-name">행운 (LUK)</span>
+              <span id="val-luk" class="st-val">8</span>
+              <button id="btn-add-luk" class="btn-add">+</button>
+            </div>
+          </div>
+          <hr class="modal-divider">
+          <h4>전투 파생 세부 수치</h4>
+          <div class="derived-grid">
+            <div>공격력: <span id="derived-attack">-</span></div>
+            <div>방어력: <span id="derived-defense">-</span></div>
+            <div>치명타율: <span id="derived-crit">-</span></div>
+            <div>이동속도: <span id="derived-speed">-</span></div>
+            <div>재사용 대기시간 감소: <span id="derived-cdr">-</span></div>
+            <div>아이템 획득 행운: <span id="derived-mf">-</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2: Inventory & Equipment Modal -->
+    <div id="modal-inventory" class="game-modal" style="display:none;">
+      <div class="modal-box modal-wide">
+        <div class="modal-header">
+          <h3>장비 착용 & 소지품 가방</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body inv-flex">
+          <div class="equip-section">
+            <h4>착용 장비 (클릭 시 해제)</h4>
+            <div id="inventory-equip-slots" class="equip-grid"></div>
+          </div>
+          <div class="bag-section">
+            <h4>소지품 (24칸 - 클릭 시 장착)</h4>
+            <div id="inventory-bag-grid" class="bag-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Rebirth (Prestige) Modal -->
+    <div id="modal-rebirth" class="game-modal" style="display:none;">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>영겁의 환생 (Prestige Rebirth)</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body rebirth-content">
+          <p class="rebirth-desc">
+            현재 삶을 마감하고 새로운 영혼으로 환생합니다.<br>
+            <strong>레벨은 1로 리셋</strong>되지만, <strong>영구 스탯 보너스</strong>를 획득하며<br>
+            <strong>전 세계 5대 바이옴의 난이도 배치가 완전히 무작위로 셔플</strong>되어 새로운 환경에서 태어납니다!
+          </p>
+          <div class="rebirth-stats-box">
+            <div>현재 환생 횟수: <span id="rebirth-current-count">0회</span></div>
+            <div>환생 시 영구 보너스: <strong id="rebirth-next-bonus" style="color:#00ffff;">+25 pt</strong></div>
+          </div>
+          <div id="rebirth-req-msg" class="rebirth-req">* 환생 가능 여부 확인 중...</div>
+          <button id="btn-do-rebirth" class="btn-do-rebirth">환생 실행 (Rebirth)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

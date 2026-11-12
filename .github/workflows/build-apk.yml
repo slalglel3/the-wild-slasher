@@ -1,0 +1,102 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci --prefer-offline || npm install
+
+      - name: Build Web Application
+        run: |
+          npm run build
+
+      - name: Sync Capacitor Android
+        run: |
+          npx cap sync android
+
+      - name: Grant Execute Permission for Gradlew
+        run: |
+          chmod +x android/gradlew
+
+      - name: Build Android Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Prepare APK File
+        run: |
+          mkdir -p build-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk build-output/WildSlasher-release.apk
+          ls -la build-output/
+
+      - name: Sign APK with apksigner (v1 + v2)
+        run: |
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+          KEYSTORE=~/.android/debug.keystore
+          if [ ! -f $KEYSTORE ]; then
+            mkdir -p ~/.android
+            keytool -genkey -v -keystore $KEYSTORE -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=WildSlasher,O=Android,C=KR"
+          fi
+          echo "Signing APK with apksigner (v1 + v2)..."
+          $APKSIGNER sign --ks $KEYSTORE --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --min-sdk-version 23 --v1-signing-enabled true --v2-signing-enabled true build-output/WildSlasher-release.apk
+          echo "Verifying signed APK..."
+          $APKSIGNER verify --verbose build-output/WildSlasher-release.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WildSlasher-apk
+          path: build-output/WildSlasher-release.apk
+          retention-days: 30
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "The Wild Slasher ${{ github.ref_name }}"
+          body: |
+            ## 📱 The Wild Slasher (눈을 떠요 야생소년 감성의 실시간 핵앤슬래시 RPG)
+            
+            - **장르**: 쿼터뷰 2D 도트 감성 실시간 액션 RPG (디아블로 / 토치라이트 스타일)
+            - **플랫폼**: Android 스마트폰 (가로모드 Landscape 최적화)
+            - **보안**: 100% 완전 오프라인 독립 구동 (INTERNET 권한 0개, 안전한 설치)
+            
+            ### 🎮 설치 방법
+            1. 아래의 `WildSlasher-release.apk`를 안드로이드 스마트폰에 다운로드합니다.
+            2. 파일 관리자에서 APK를 탭하여 설치를 진행합니다.
+            3. (출처를 알 수 없는 앱 경고가 뜰 경우 '무시하고 설치'를 선택하시면 됩니다.)
+          draft: false
+          prerelease: false
+          files: |
+            build-output/WildSlasher-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

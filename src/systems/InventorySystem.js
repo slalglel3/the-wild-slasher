@@ -1,0 +1,143 @@
+// Diablo-style Inventory & Equipment System
+
+import { CONFIG } from '../config.js';
+
+const AFFIX_NAMES = [
+  { name: '용사의', stat: 'STR', min: 2, max: 8 },
+  { name: '바람의', stat: 'DEX', min: 2, max: 8 },
+  { name: '지혜의', stat: 'INT', min: 2, max: 8 },
+  { name: '불굴의', stat: 'VIT', min: 3, max: 10 },
+  { name: '행운의', stat: 'LUK', min: 2, max: 8 },
+  { name: '학살자의', stat: 'attack', min: 5, max: 18 },
+  { name: '철벽의', stat: 'defense', min: 4, max: 15 },
+  { name: '생명의', stat: 'hp', min: 30, max: 120 },
+  { name: '광폭의', stat: 'critChance', min: 2, max: 6 },
+  { name: '신속의', stat: 'speed', min: 10, max: 30 }
+];
+
+const ITEM_BASE_NAMES = {
+  WEAPON: ['녹슨 검', '양손 대검', '전쟁 망치', '화염 칼날', '학살의 도끼'],
+  ARMOR: ['가죽 흉갑', '강철 판금갑옷', '고대 미스릴 갑옷', '용린 갑옷'],
+  HELMET: ['가죽 투구', '기사의 투구', '야수의 두개골', '불사조 관'],
+  BOOTS: ['가죽 장화', '철제 군화', '바람의 샌들', '용암 활보 장화'],
+  AMULET: ['청동 부적', '루비 목걸이', '빛의 펜던트', '어둠의 심장'],
+  RING: ['철 반지', '은반지', '에메랄드 반지', '영겁의 고리']
+};
+
+export class InventorySystem {
+  constructor() {
+    this.capacity = 24;
+    this.items = []; // Array of items
+    this.equipment = {
+      WEAPON: null,
+      ARMOR: null,
+      HELMET: null,
+      BOOTS: null,
+      AMULET: null,
+      RING: null
+    };
+  }
+
+  // Generate random item drop based on monster tier and player magic find
+  static generateItem(tierLevel = 1, magicFind = 1.0) {
+    const slots = CONFIG.ITEM_SLOTS;
+    const slot = slots[Math.floor(Math.random() * slots.length)];
+    
+    // Roll rarity
+    const roll = Math.random() * 100 / magicFind;
+    let rarityKey = 'NORMAL';
+    if (roll < 3.5) rarityKey = 'LEGENDARY';
+    else if (roll < 15.0) rarityKey = 'RARE';
+    else if (roll < 45.0) rarityKey = 'MAGIC';
+
+    const rarity = CONFIG.ITEM_RARITY[rarityKey];
+    const baseNames = ITEM_BASE_NAMES[slot];
+    const baseName = baseNames[Math.min(baseNames.length - 1, Math.floor(Math.random() * baseNames.length))];
+
+    // Roll affixes
+    const affixes = [];
+    const stats = { STR: 0, DEX: 0, INT: 0, VIT: 0, LUK: 0, attack: 0, defense: 0, hp: 0, critChance: 0, speed: 0 };
+    
+    // Base stats by slot and tier
+    const tierMult = 1 + (tierLevel - 1) * 0.15;
+    if (slot === 'WEAPON') stats.attack = Math.floor((10 + tierLevel * 4) * rarity.mult);
+    if (slot === 'ARMOR' || slot === 'HELMET') stats.defense = Math.floor((6 + tierLevel * 3) * rarity.mult);
+    if (slot === 'BOOTS') stats.speed = Math.floor(15 + tierLevel * 2);
+    if (slot === 'AMULET' || slot === 'RING') stats.hp = Math.floor((20 + tierLevel * 10) * rarity.mult);
+
+    // Pick unique affixes
+    const shuffledAffixes = [...AFFIX_NAMES].sort(() => 0.5 - Math.random());
+    const pickedAffixes = shuffledAffixes.slice(0, rarity.affixCount);
+
+    let prefix = '';
+    pickedAffixes.forEach((aff, idx) => {
+      const val = Math.floor((aff.min + Math.random() * (aff.max - aff.min)) * tierMult * (rarity.mult * 0.8));
+      stats[aff.stat] = (stats[aff.stat] || 0) + val;
+      affixes.push({ name: aff.name, stat: aff.stat, value: val });
+      if (idx === 0) prefix = aff.name + ' ';
+    });
+
+    return {
+      id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      name: prefix + baseName,
+      slot,
+      rarity: rarityKey,
+      color: rarity.color,
+      stats,
+      affixes,
+      tier: tierLevel
+    };
+  }
+
+  addItem(item) {
+    if (this.items.length < this.capacity) {
+      this.items.push(item);
+      return true;
+    }
+    return false;
+  }
+
+  removeItem(index) {
+    if (index >= 0 && index < this.items.length) {
+      return this.items.splice(index, 1)[0];
+    }
+    return null;
+  }
+
+  equip(index) {
+    const item = this.items[index];
+    if (!item) return false;
+
+    const currentEquip = this.equipment[item.slot];
+    this.equipment[item.slot] = item;
+    this.items.splice(index, 1);
+
+    if (currentEquip) {
+      this.items.push(currentEquip);
+    }
+    return true;
+  }
+
+  unequip(slot) {
+    const item = this.equipment[slot];
+    if (item && this.items.length < this.capacity) {
+      this.equipment[slot] = null;
+      this.items.push(item);
+      return true;
+    }
+    return false;
+  }
+
+  getEquipStats() {
+    const total = { STR: 0, DEX: 0, INT: 0, VIT: 0, LUK: 0, attack: 0, defense: 0, hp: 0, mp: 0, critChance: 0, critDamage: 0, speed: 0, cdr: 0, magicFind: 0 };
+    for (const slot of Object.keys(this.equipment)) {
+      const item = this.equipment[slot];
+      if (item && item.stats) {
+        for (const [st, val] of Object.entries(item.stats)) {
+          total[st] = (total[st] || 0) + val;
+        }
+      }
+    }
+    return total;
+  }
+}
