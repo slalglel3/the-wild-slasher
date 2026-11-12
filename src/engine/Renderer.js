@@ -1,4 +1,4 @@
-// Isometric 2D Renderer - 'The Wild Darkness' Style
+// Isometric 2D Renderer - 'The Wild Darkness' Style with High-Res Image Sprites
 
 import { CONFIG } from '../config.js';
 
@@ -9,6 +9,28 @@ export class Renderer {
     this.camera = { x: 0, y: 0 };
     this.tileW = CONFIG.TILE_WIDTH;
     this.tileH = CONFIG.TILE_HEIGHT;
+
+    // Load High-Res Image Assets
+    this.assets = {
+      playerWarrior: this.loadImage('./assets/player/warrior_idle.png'),
+      joystickBase: this.loadImage('./assets/ui/joystick_base.png'),
+      joystickKnob: this.loadImage('./assets/ui/joystick_knob.png'),
+      skills: {
+        SLASH: this.loadImage('./assets/skills/skill_slash.png'),
+        WHIRLWIND: this.loadImage('./assets/skills/skill_whirlwind.png'),
+        DASH: this.loadImage('./assets/skills/skill_dash.png'),
+        GROUND_SLAM: this.loadImage('./assets/skills/skill_slam.png'),
+        WAR_CRY: this.loadImage('./assets/skills/skill_warcry.png')
+      }
+    };
+  }
+
+  loadImage(src) {
+    const img = new Image();
+    img.src = src;
+    img.loaded = false;
+    img.onload = () => { img.loaded = true; };
+    return img;
   }
 
   // World (x, y) to Isometric Screen (sx, sy)
@@ -93,7 +115,7 @@ export class Renderer {
     // 8. Dark Vignette / Fog Overlay (Atmospheric survival feel)
     this.renderVignette(ctx, W, H);
 
-    // 9. Mobile Touch HUD & Virtual Controls
+    // 9. Mobile Touch HUD & Virtual Controls with High-Res Assets
     this.renderTouchControls(ctx, game.input, player, W, H);
   }
 
@@ -199,73 +221,52 @@ export class Renderer {
     player.trails.forEach(t => {
       const tIso = this.toIso(t.x, t.y);
       ctx.beginPath();
-      ctx.ellipse(tIso.x, tIso.y, 14, 7, 0, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0, 200, 255, ${t.life / t.maxLife * 0.4})`;
+      ctx.ellipse(tIso.x, tIso.y, 18, 9, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 220, 255, ${t.life / t.maxLife * 0.45})`;
       ctx.fill();
     });
 
-    // Shadow
+    // Ground Shadow
     ctx.beginPath();
-    ctx.ellipse(isoX, isoY, 14, 7, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.ellipse(isoX, isoY + 2, 18, 9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
     ctx.fill();
 
-    // Bounce walk bobbing
-    const bob = Math.abs(Math.sin(player.animTime * 12)) * 4;
-    const bodyY = isoY - 16 - bob;
+    // Walking bounce animation
+    const isMoving = Math.hypot(player.vx, player.vy) > 10;
+    const bob = isMoving ? Math.abs(Math.sin(player.animTime * 14)) * 5 : Math.sin(player.animTime * 3) * 1.5;
+    const bodyY = isoY - bob;
 
-    // Flip horizontally based on facing direction
     ctx.translate(isoX, bodyY);
     ctx.scale(player.facing, 1);
 
-    // Body (Warrior Armor - Wild Boy cute proportion)
-    ctx.fillStyle = '#5c4033'; // Leather tunic
-    ctx.beginPath();
-    ctx.roundRect(-8, 0, 16, 15, 4);
-    ctx.fill();
+    // Whirlwind rotation effect
+    if (player.whirlwindTimer > 0) {
+      ctx.rotate(player.animTime * 24);
+    } else if (isMoving) {
+      // Slight tilt when running
+      ctx.rotate(Math.sin(player.animTime * 14) * 0.08);
+    }
 
-    // Steel chestplate
-    ctx.fillStyle = '#8a9ea7';
-    ctx.fillRect(-6, 2, 12, 10);
+    // Hurt flash filter
+    if (player.invincibleTimer > 0) {
+      ctx.filter = 'brightness(1.5) drop-shadow(0 0 4px #ff4444)';
+    }
 
-    // Head (Cute 2.5 head ratio)
-    ctx.fillStyle = '#ffdbac';
-    ctx.beginPath();
-    ctx.arc(0, -10, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Warrior Iron Helmet
-    ctx.fillStyle = '#4a5b63';
-    ctx.beginPath();
-    ctx.arc(0, -12, 11, Math.PI, 0);
-    ctx.fill();
-    // Horn / crest
-    ctx.fillStyle = '#c5a059';
-    ctx.fillRect(-2, -22, 4, 10);
-
-    // Eyes
-    ctx.fillStyle = '#111';
-    ctx.fillRect(2, -10, 2.5, 4);
-    ctx.fillRect(6, -10, 2.5, 4);
-
-    // Sword (Weapon in hand)
-    ctx.save();
-    const swingAngle = player.activeAttacks.some(a => a.type === 'SLASH') ? 1.4 : -0.2;
-    ctx.translate(10, 5);
-    ctx.rotate(swingAngle);
-    ctx.fillStyle = '#e0e0e0';
-    ctx.fillRect(0, -18, 5, 20); // Blade
-    ctx.fillStyle = '#8b5a2b';
-    ctx.fillRect(-2, 0, 9, 3); // Crossguard
-    ctx.restore();
-
-    // Shield (Left hand)
-    ctx.fillStyle = '#3a4a52';
-    ctx.beginPath();
-    ctx.arc(-8, 5, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#c5a059';
-    ctx.fillRect(-10, 3, 4, 4);
+    // Render High-Res Sprite Asset if loaded
+    const sprite = this.assets.playerWarrior;
+    if (sprite.loaded) {
+      // Draw centered sprite (width: 54px, height: 72px)
+      const sw = 54;
+      const sh = 72;
+      ctx.drawImage(sprite, -sw / 2, -sh + 6, sw, sh);
+    } else {
+      // Fallback
+      ctx.fillStyle = '#ffdbac';
+      ctx.beginPath();
+      ctx.arc(0, -20, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
 
@@ -273,14 +274,17 @@ export class Renderer {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`Lv.${player.level} ${player.classData.name.split(' ')[0]}`, isoX, isoY - 42);
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`Lv.${player.level} ${player.classData.name.split(' ')[0]}`, isoX, isoY - 68);
+    ctx.shadowBlur = 0;
 
     // HP Mini Bar
-    const hpPct = player.hp / player.derived.maxHp;
-    ctx.fillStyle = '#222';
-    ctx.fillRect(isoX - 16, isoY - 38, 32, 4);
+    const hpPct = Math.max(0, player.hp / player.derived.maxHp);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(isoX - 20, isoY - 64, 40, 5);
     ctx.fillStyle = '#44ff44';
-    ctx.fillRect(isoX - 16, isoY - 38, Math.max(0, 32 * hpPct), 4);
+    ctx.fillRect(isoX - 20, isoY - 64, Math.max(0, 40 * hpPct), 5);
   }
 
   drawMonster(ctx, m, isoX, isoY) {
@@ -456,86 +460,132 @@ export class Renderer {
   }
 
   renderTouchControls(ctx, input, player, W, H) {
-    // 1. Virtual Joystick (Left)
+    // 1. High-Res Virtual Joystick (Left)
+    const joyBase = this.assets.joystickBase;
+    const joyKnob = this.assets.joystickKnob;
+
     if (input.joystick.active) {
       ctx.save();
-      // Outer Ring
-      ctx.beginPath();
-      ctx.arc(input.joystick.startX, input.joystick.startY, input.joystick.radius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      const sx = input.joystick.startX;
+      const sy = input.joystick.startY;
+      const cx = input.joystick.currX;
+      const cy = input.joystick.currY;
 
-      // Inner Knob
-      ctx.beginPath();
-      ctx.arc(input.joystick.currX, input.joystick.currY, 22, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.6)';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      // Draw Runic Base Ring
+      if (joyBase.loaded) {
+        ctx.drawImage(joyBase, sx - 65, sy - 65, 130, 130);
+      } else {
+        ctx.beginPath();
+        ctx.arc(sx, sy, input.joystick.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.fill();
+        ctx.strokeStyle = '#00ffff';
+        ctx.stroke();
+      }
+
+      // Draw Glowing Gem Knob
+      if (joyKnob.loaded) {
+        ctx.drawImage(joyKnob, cx - 25, cy - 25, 50, 50);
+      } else {
+        ctx.beginPath();
+        ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 200, 255, 0.8)';
+        ctx.fill();
+      }
       ctx.restore();
     } else {
-      // Guide prompt on left if idle
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.font = '12px sans-serif';
+      // Idle guide prompt on left
+      ctx.save();
+      if (joyBase.loaded) {
+        ctx.globalAlpha = 0.25;
+        ctx.drawImage(joyBase, 50, H - 150, 110, 110);
+        ctx.globalAlpha = 1.0;
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('좌측 화면 드래그: 이동', 100, H - 40);
+      ctx.fillText('좌측 화면 드래그: 이동', 105, H - 28);
+      ctx.restore();
     }
 
-    // 2. Action Skill Wheel (Right)
+    // 2. High-Res Action Skill Wheel (Right)
     const sk = player.skillSystem.skills;
+    const skillImgs = this.assets.skills;
 
-    // Helper to draw touch button
-    const drawBtn = (x, y, r, icon, name, cost, timer, cooldown, color = '#222') => {
+    // Helper to draw image button with cooldown mask
+    const drawSkillBtn = (x, y, r, imgAsset, skillKey, label, cost) => {
+      const skill = sk[skillKey];
       ctx.save();
+
+      // Outer glow & border
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
+      ctx.fillStyle = '#1a1816';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = skill.cost > player.mp ? '#666' : '#d4af37';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
 
+      // Draw high-res skill icon
+      if (imgAsset && imgAsset.loaded) {
+        ctx.save();
+        ctx.clip(); // Clip within circle
+        ctx.drawImage(imgAsset, x - r, y - r, r * 2, r * 2);
+        ctx.restore();
+      } else {
+        // Fallback text
+        ctx.font = `${Math.floor(r * 0.75)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(skill.icon, x, y + r * 0.28);
+      }
+
       // Cooldown slice overlay
-      if (timer > 0 && cooldown > 0) {
-        const pct = timer / cooldown;
+      if (skill.timer > 0 && skill.cooldown > 0) {
+        const pct = skill.timer / skill.cooldown;
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct, false);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fill();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(timer.toFixed(1), x, y + 4);
-      } else {
-        ctx.font = `${Math.floor(r * 0.75)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(icon, x, y + r * 0.28);
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText(skill.timer.toFixed(1), x, y + 5);
+        ctx.shadowBlur = 0;
       }
 
-      // Name & MP cost
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '10px sans-serif';
+      // Insufficient MP dark overlay
+      if (player.mp < skill.cost) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 50, 150, 0.45)';
+        ctx.fill();
+      }
+
+      // Name & key label below button
+      ctx.fillStyle = '#f0f0f0';
+      ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(name, x, y + r + 11);
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3;
+      ctx.fillText(label, x, y + r + 12);
+      ctx.shadowBlur = 0;
       ctx.restore();
     };
 
-    // Main Slash
-    drawBtn(W - 90, H - 90, 45, sk.SLASH.icon, sk.SLASH.name, 0, sk.SLASH.timer, sk.SLASH.cooldown, '#8b0000cc');
+    // Main Slash (Big center-right button)
+    drawSkillBtn(W - 90, H - 90, 44, skillImgs.SLASH, 'SLASH', '베기', 0);
     // Whirlwind (1)
-    drawBtn(W - 175, H - 80, 30, sk.WHIRLWIND.icon, '휠윈드 [1]', sk.WHIRLWIND.cost, sk.WHIRLWIND.timer, sk.WHIRLWIND.cooldown, '#005588cc');
+    drawSkillBtn(W - 175, H - 80, 28, skillImgs.WHIRLWIND, 'WHIRLWIND', '휠윈드 [1]', sk.WHIRLWIND.cost);
     // Dash (2)
-    drawBtn(W - 80, H - 180, 30, sk.DASH.icon, '돌진 [2]', sk.DASH.cost, sk.DASH.timer, sk.DASH.cooldown, '#d48800cc');
+    drawSkillBtn(W - 80, H - 180, 28, skillImgs.DASH, 'DASH', '돌진 [2]', sk.DASH.cost);
     // Ground Slam (3)
-    drawBtn(W - 150, H - 150, 30, sk.GROUND_SLAM.icon, '강타 [3]', sk.GROUND_SLAM.cost, sk.GROUND_SLAM.timer, sk.GROUND_SLAM.cooldown, '#883300cc');
+    drawSkillBtn(W - 150, H - 150, 28, skillImgs.GROUND_SLAM, 'GROUND_SLAM', '강타 [3]', sk.GROUND_SLAM.cost);
     // War Cry (4)
-    drawBtn(W - 225, H - 130, 28, sk.WAR_CRY.icon, '함성 [4]', sk.WAR_CRY.cost, sk.WAR_CRY.timer, sk.WAR_CRY.cooldown, '#555500cc');
+    drawSkillBtn(W - 225, H - 130, 26, skillImgs.WAR_CRY, 'WAR_CRY', '함성 [4]', sk.WAR_CRY.cost);
   }
 }
