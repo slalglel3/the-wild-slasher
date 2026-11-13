@@ -30,6 +30,7 @@ export class Renderer {
       propRock: this.loadImage('./assets/world/prop_rock.png'),
       propGateway: this.loadImage('./assets/world/prop_gateway.png'),
       propChest: this.loadImage('./assets/world/prop_chest.png'),
+      propChestOpen: this.loadImage('./assets/world/prop_chest_open.png'),
       // Monsters
       monsters: {
         WOLF: this.loadImage('./assets/monsters/monster_wolf.png'),
@@ -219,6 +220,7 @@ export class Renderer {
     const halfH = this.tileH / 2;
     const gateImg = this.assets.propGateway;
     const chestImg = this.assets.propChest;
+    const openChestImg = this.assets.propChestOpen;
 
     // World Highway Gateway (Path to Next World)
     const gIsoX = (map.portalPos.c - map.portalPos.r) * halfW;
@@ -227,17 +229,17 @@ export class Renderer {
     ctx.save();
     if (gateImg.loaded) {
       // Draw massive ancient stone archway road gate
-      ctx.drawImage(gateImg, gIsoX - 48, gIsoY - 95, 96, 106);
+      ctx.drawImage(gateImg, gIsoX - 48, gIsoY - 80, 96, 106);
     }
 
-    // Portal Highway Road Glow
+    // Portal Highway Road Entrance Glow (Generous walk-in zone)
     const roadColor = game.bossDefeated ? '#00ffff' : '#ff4444';
     ctx.beginPath();
-    ctx.ellipse(gIsoX, gIsoY, 40, 20, 0, 0, Math.PI * 2);
-    ctx.fillStyle = game.bossDefeated ? 'rgba(0, 255, 255, 0.25)' : 'rgba(255, 68, 68, 0.2)';
+    ctx.ellipse(gIsoX, gIsoY + 6, 52, 26, 0, 0, Math.PI * 2);
+    ctx.fillStyle = game.bossDefeated ? 'rgba(0, 255, 255, 0.3)' : 'rgba(255, 68, 68, 0.22)';
     ctx.fill();
     ctx.strokeStyle = roadColor;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
@@ -245,7 +247,7 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.shadowColor = '#000';
     ctx.shadowBlur = 4;
-    ctx.fillText(game.bossDefeated ? '★ 다음 월드로 통하는 길 (진입 가능) ★' : '봉인된 관문 (보스 토벌 필요)', gIsoX, gIsoY - 105);
+    ctx.fillText(game.bossDefeated ? '★ 다음 월드로 통하는 길 (진입 즉시 이동) ★' : '봉인된 관문 (보스 토벌 필요)', gIsoX, gIsoY - 95);
     ctx.shadowBlur = 0;
     ctx.restore();
 
@@ -255,21 +257,24 @@ export class Renderer {
       const cIsoY = (ch.c + ch.r) * halfH;
       ctx.save();
       if (ch.opened) {
-        ctx.globalAlpha = 0.55;
-      }
-      if (chestImg.loaded) {
-        ctx.drawImage(chestImg, cIsoX - 18, cIsoY - 24, 36, 36);
-      } else {
-        ctx.fillStyle = ch.opened ? '#553311' : '#8b5a2b';
-        ctx.fillRect(cIsoX - 10, cIsoY - 14, 20, 14);
-      }
-      if (ch.opened) {
-        ctx.fillStyle = '#aaaaaa';
+        if (openChestImg && openChestImg.loaded) {
+          ctx.drawImage(openChestImg, cIsoX - 18, cIsoY - 24, 36, 36);
+        } else if (chestImg.loaded) {
+          ctx.globalAlpha = 0.6;
+          ctx.drawImage(chestImg, cIsoX - 18, cIsoY - 24, 36, 36);
+        }
+        ctx.fillStyle = '#ffd700';
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('(열림)', cIsoX, cIsoY - 26);
+        ctx.fillText('열림', cIsoX, cIsoY - 26);
       } else {
-        // Subtle gold sparkle marker
+        if (chestImg.loaded) {
+          ctx.drawImage(chestImg, cIsoX - 18, cIsoY - 24, 36, 36);
+        } else {
+          ctx.fillStyle = '#8b5a2b';
+          ctx.fillRect(cIsoX - 10, cIsoY - 14, 20, 14);
+        }
+        // Gold shine above unopened chest
         ctx.fillStyle = '#ffd700';
         ctx.beginPath();
         ctx.arc(cIsoX, cIsoY - 28, 2.5, 0, Math.PI * 2);
@@ -368,14 +373,16 @@ export class Renderer {
       }
     }
 
-    // ★ FIXED: Whirlwind Center-Pivot Rotation!
-    // Translate to center of body (-sh/2) so character spins like a top, NOT like a windmill!
-    ctx.translate(isoX, bodyY - sh / 2);
-    ctx.scale(player.facing, 1);
-
+    // 100% Upright Character Stance: Horizontal Top Spin during Whirlwind (NO windmill rolling!)
+    let spinScaleX = player.facing;
     if (isWhirlwind) {
-      ctx.rotate(player.animTime * 28);
+      // Rapid horizontal yaw flip spin on vertical axis
+      const cycle = Math.sin(player.animTime * 30);
+      spinScaleX = cycle < 0 ? -1 : 1;
     }
+
+    ctx.translate(isoX, bodyY - sh / 2);
+    ctx.scale(spinScaleX, 1);
 
     if (player.invincibleTimer > 0) {
       ctx.filter = 'brightness(1.5) drop-shadow(0 0 5px #ff4444)';
@@ -387,6 +394,25 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // Whirlwind Furious Cyclone Wind Blades (Rendered around character upright)
+    if (isWhirlwind) {
+      ctx.save();
+      const bladeCount = 4;
+      for (let b = 0; b < bladeCount; b++) {
+        const bladeAng = player.animTime * 22 + (b * Math.PI * 0.5);
+        const rx = 36 + (b % 2) * 8;
+        const ry = 18 + (b % 2) * 4;
+        const yOffset = -14 + (b % 2) * 8; // waists & ground
+
+        ctx.beginPath();
+        ctx.ellipse(isoX, bodyY + yOffset, rx, ry, bladeAng * 0.35, 0, Math.PI * 1.6);
+        ctx.strokeStyle = b % 2 === 0 ? 'rgba(0, 225, 255, 0.8)' : 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // Player Mini Name & Level Tag
     ctx.fillStyle = '#ffffff';

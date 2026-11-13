@@ -35,6 +35,94 @@ export class UIManager {
       });
     }
 
+    // Salvage All button (Normal & Magic)
+    const salvageAllBtn = document.getElementById('btn-salvage-all');
+    if (salvageAllBtn) {
+      salvageAllBtn.addEventListener('click', () => {
+        const inv = this.game.player.inventory;
+        const player = this.game.player;
+        let totalGold = 0;
+        let count = 0;
+
+        for (let i = inv.items.length - 1; i >= 0; i--) {
+          const item = inv.items[i];
+          if (item && (item.rarity.id === 'NORMAL' || item.rarity.id === 'MAGIC')) {
+            const res = inv.salvageItem(i, this.game.biomeManager.currentTierLevel);
+            if (res) {
+              totalGold += res.gold;
+              count++;
+            }
+          }
+        }
+
+        if (count > 0) {
+          player.gold += totalGold;
+          this.game.floatingTexts.push({
+            x: player.x,
+            y: player.y - 40,
+            text: `일괄 분해: +${totalGold}G 획득! (${count}개)`,
+            color: '#ffd700',
+            scale: 1.2,
+            life: 1.5
+          });
+          this.updateInventoryModal();
+        }
+      });
+    }
+
+    // Item Detail Modal Action Buttons
+    const detailClose = document.getElementById('item-detail-close');
+    if (detailClose) {
+      detailClose.addEventListener('click', () => {
+        document.getElementById('modal-item-detail').style.display = 'none';
+      });
+    }
+
+    const equipBtn = document.getElementById('btn-item-equip');
+    if (equipBtn) {
+      equipBtn.addEventListener('click', () => {
+        if (this.selectedBagIndex !== null) {
+          this.game.player.inventory.equip(this.selectedBagIndex);
+          this.game.player.recalcStats();
+          document.getElementById('modal-item-detail').style.display = 'none';
+          this.updateInventoryModal();
+        }
+      });
+    }
+
+    const salvageBtn = document.getElementById('btn-item-salvage');
+    if (salvageBtn) {
+      salvageBtn.addEventListener('click', () => {
+        if (this.selectedBagIndex !== null) {
+          const res = this.game.player.inventory.salvageItem(this.selectedBagIndex, this.game.biomeManager.currentTierLevel);
+          if (res) {
+            this.game.player.gold += res.gold;
+            this.game.floatingTexts.push({
+              x: this.game.player.x,
+              y: this.game.player.y - 40,
+              text: `아이템 분해: +${res.gold}G 획득!`,
+              color: '#ffd700',
+              scale: 1.15,
+              life: 1.2
+            });
+          }
+          document.getElementById('modal-item-detail').style.display = 'none';
+          this.updateInventoryModal();
+        }
+      });
+    }
+
+    const deleteBtn = document.getElementById('btn-item-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => {
+        if (this.selectedBagIndex !== null) {
+          this.game.player.inventory.deleteItem(this.selectedBagIndex);
+          document.getElementById('modal-item-detail').style.display = 'none';
+          this.updateInventoryModal();
+        }
+      });
+    }
+
     // Stat allocation buttons
     ['STR', 'DEX', 'INT', 'VIT', 'LUK'].forEach(st => {
       const btn = document.getElementById(`btn-add-${st.toLowerCase()}`);
@@ -190,6 +278,10 @@ export class UIManager {
       equipContainer.appendChild(div);
     });
 
+    // Display Gold
+    const goldDisplay = document.getElementById('inv-gold-display');
+    if (goldDisplay) goldDisplay.innerText = `${this.game.player.gold}`;
+
     // Render Bag Grid
     const bagGrid = document.getElementById('inventory-bag-grid');
     bagGrid.innerHTML = '';
@@ -204,17 +296,47 @@ export class UIManager {
           <img src="${iconSrc}" style="width:24px; height:24px; pointer-events:none;">
           <span style="color:${item.color}; font-size:8px; line-height:1; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:38px;">${item.name}</span>
         `;
-        slot.title = `클릭하여 장착: ${item.name}`;
+        slot.title = `${item.name} (클릭 시 옵션)`;
         slot.onclick = () => {
-          inv.equip(i);
-          this.game.player.recalcStats();
-          this.updateInventoryModal();
+          this.openItemDetailModal(i, item);
         };
       } else {
         slot.innerHTML = '';
       }
       bagGrid.appendChild(slot);
     }
+  }
+
+  openItemDetailModal(index, item) {
+    this.selectedBagIndex = index;
+    const modal = document.getElementById('modal-item-detail');
+    if (!modal || !item) return;
+
+    document.getElementById('item-detail-name').innerText = item.name;
+    document.getElementById('item-detail-name').style.color = item.color;
+    document.getElementById('item-detail-slot').innerText = `[${item.rarity.name}] ${item.slot}`;
+
+    // Format stats summary
+    const statsLines = [];
+    if (item.stats.attack) statsLines.push(`• 공격력: +${item.stats.attack}`);
+    if (item.stats.defense) statsLines.push(`• 방어력: +${item.stats.defense}`);
+    if (item.stats.hp) statsLines.push(`• 최대 생명력: +${item.stats.hp}`);
+    if (item.stats.speed) statsLines.push(`• 이동속도: +${item.stats.speed}`);
+    if (item.stats.critChance) statsLines.push(`• 치명타율: +${item.stats.critChance.toFixed(1)}%`);
+    if (item.stats.STR) statsLines.push(`• 힘: +${item.stats.STR}`);
+    if (item.stats.DEX) statsLines.push(`• 민첩: +${item.stats.DEX}`);
+    if (item.stats.INT) statsLines.push(`• 지능: +${item.stats.INT}`);
+    if (item.stats.VIT) statsLines.push(`• 체력: +${item.stats.VIT}`);
+    if (item.stats.LUK) statsLines.push(`• 행운: +${item.stats.LUK}`);
+
+    const baseGold = item.rarity.id === 'LEGENDARY' ? 1200 :
+                     item.rarity.id === 'RARE' ? 450 :
+                     item.rarity.id === 'MAGIC' ? 150 : 50;
+    const salvageGold = baseGold + this.game.biomeManager.currentTierLevel * 8;
+    statsLines.push(`<span style="color:#ffd700; margin-top:4px; display:inline-block;">• 분해 시 환급 골드: 🪙 ${salvageGold} G</span>`);
+
+    document.getElementById('item-detail-stats').innerHTML = statsLines.join('<br>') || '추가 능력치 없음';
+    modal.style.display = 'flex';
   }
 
   updateRebirthModal() {

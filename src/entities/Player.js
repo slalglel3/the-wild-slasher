@@ -24,9 +24,10 @@ export class Player extends Entity {
     this.expToNext = 250; // Slower, more rewarding progression
     this.advancementTier = 0;
 
-    // Vitals
+    // Vitals & Currency
     this.hp = 100;
     this.mp = 100;
+    this.gold = 100;
     this.isDead = false;
 
     // Movement & Combat States

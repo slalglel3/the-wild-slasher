@@ -111,9 +111,15 @@
     <!-- Modal 2: Inventory & Equipment Modal -->
     <div id="modal-inventory" class="game-modal" style="display:none;">
       <div class="modal-box modal-wide">
-        <div class="modal-header">
-          <h3>장비 착용 & 소지품 가방</h3>
-          <button class="modal-close">&times;</button>
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <h3>장비 및 소지품</h3>
+            <span style="color:#ffd700; font-weight:bold; font-size:13px;">🪙 보유 골드: <span id="inv-gold-display">100</span> G</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button id="btn-salvage-all" class="btn-stat-add" style="width:auto; padding:4px 10px; font-size:11px; background:#4a5568;">일괄 분해 (일반/매직)</button>
+            <button class="modal-close">&times;</button>
+          </div>
         </div>
         <div class="modal-body inv-flex">
           <div class="equip-section">
@@ -121,8 +127,27 @@
             <div id="inventory-equip-slots" class="equip-grid"></div>
           </div>
           <div class="bag-section">
-            <h4>소지품 (24칸 - 클릭 시 장착)</h4>
+            <h4>소지품 가방 (클릭 시 장착/분해/삭제)</h4>
             <div id="inventory-bag-grid" class="bag-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2-B: Item Detail & Action Popover -->
+    <div id="modal-item-detail" class="game-modal" style="display:none; z-index:10000;">
+      <div class="modal-box" style="max-width:320px; text-align:center;">
+        <div class="modal-header">
+          <h4 id="item-detail-name" style="margin:0;">아이템 이름</h4>
+          <button id="item-detail-close" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="item-detail-slot" style="font-size:12px; color:#aaa; margin-bottom:6px;">부위 / 등급</div>
+          <div id="item-detail-stats" style="font-size:12px; line-height:1.5; color:#eee; background:#111; padding:8px; border-radius:4px; margin-bottom:12px; text-align:left;"></div>
+          <div style="display:flex; gap:6px; justify-content:center;">
+            <button id="btn-item-equip" class="btn-do-rebirth" style="padding:6px 12px; font-size:12px; background:linear-gradient(90deg, #2b6cb0, #3182ce);">장착하기</button>
+            <button id="btn-item-salvage" class="btn-do-rebirth" style="padding:6px 12px; font-size:12px; background:linear-gradient(90deg, #d69e2e, #b7791f);">골드 분해</button>
+            <button id="btn-item-delete" class="btn-do-rebirth" style="padding:6px 12px; font-size:12px; background:linear-gradient(90deg, #c53030, #9b2c2c);">삭제</button>
           </div>
         </div>
       </div>

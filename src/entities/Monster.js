@@ -97,12 +97,14 @@ export class Monster extends Entity {
 
     // Drop Items (Diablo-style)
     const dropRoll = Math.random();
-    const dropChance = this.isBoss ? 1.0 : 0.38; // Boss 100% drops 1~3 items
+    const dropChance = this.isBoss ? 1.0 : 0.22; // Boss 100% drops, normal mobs ~22%
 
     if (dropRoll < dropChance) {
       const dropCount = this.isBoss ? 2 + Math.floor(Math.random() * 2) : 1;
       for (let i = 0; i < dropCount; i++) {
-        const item = InventorySystem.generateItem(this.tierLevel, player.derived.magicFind);
+        // Boss guarantees at least MAGIC or RARE
+        const forceRarity = (this.isBoss && i === 0) ? (Math.random() < 0.35 ? 'RARE' : 'MAGIC') : null;
+        const item = InventorySystem.generateItem(this.tierLevel, player.derived.magicFind, forceRarity);
         const offsetX = (Math.random() - 0.5) * 35;
         const offsetY = (Math.random() - 0.5) * 35;
         dropItems.push(new DropItem(this.x + offsetX, this.y + offsetY, item));

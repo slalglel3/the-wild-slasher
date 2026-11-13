@@ -42,17 +42,40 @@ export class InventorySystem {
     return InventorySystem.generateItem(tierLevel, magicFind);
   }
 
+  // Salvage item: remove from bag and return gold reward based on rarity
+  salvageItem(index, tierLevel = 1) {
+    if (index < 0 || index >= this.items.length) return null;
+    const item = this.items.splice(index, 1)[0];
+    const baseGold = item.rarity.id === 'LEGENDARY' ? 1200 :
+                     item.rarity.id === 'RARE' ? 450 :
+                     item.rarity.id === 'MAGIC' ? 150 : 50;
+    const goldReward = baseGold + tierLevel * 8;
+    return { item, gold: goldReward };
+  }
+
+  // Delete item: remove from bag without reward
+  deleteItem(index) {
+    if (index < 0 || index >= this.items.length) return null;
+    return this.items.splice(index, 1)[0];
+  }
+
   // Generate random item drop based on monster tier and player magic find
-  static generateItem(tierLevel = 1, magicFind = 1.0) {
+  static generateItem(tierLevel = 1, magicFind = 1.0, guaranteedRarity = null) {
     const slots = CONFIG.ITEM_SLOTS;
     const slot = slots[Math.floor(Math.random() * slots.length)];
     
-    // Roll rarity
+    // Balanced Rarity Roll: Normal 76%, Magic 19%, Rare 4.4%, Legendary 0.6%
     const roll = Math.random() * 100 / magicFind;
     let rarityKey = 'NORMAL';
-    if (roll < 3.5) rarityKey = 'LEGENDARY';
-    else if (roll < 15.0) rarityKey = 'RARE';
-    else if (roll < 45.0) rarityKey = 'MAGIC';
+    if (guaranteedRarity) {
+      rarityKey = guaranteedRarity;
+    } else if (roll < 0.6) {
+      rarityKey = 'LEGENDARY';
+    } else if (roll < 5.0) {
+      rarityKey = 'RARE';
+    } else if (roll < 24.0) {
+      rarityKey = 'MAGIC';
+    }
 
     const rarity = CONFIG.ITEM_RARITY[rarityKey];
     const baseNames = ITEM_BASE_NAMES[slot];

@@ -273,13 +273,13 @@ export class Game {
     // 5. Update Interactive Treasure Chests
     this.updateChests(dt);
 
-    // 5. Check World Highway Gateway Interaction (Path to Next World)
-    const gateTargetX = this.map.portalPos.c * 32;
-    const gateTargetY = this.map.portalPos.r * 32;
+    // 6. Check World Highway Gateway Interaction (Path to Next World)
+    const gateTargetX = this.map.portalPos.c * 32 + 16;
+    const gateTargetY = this.map.portalPos.r * 32 + 16;
     const distToGate = Math.hypot(this.player.x - gateTargetX, this.player.y - gateTargetY);
 
-    // Instant smooth trigger as soon as player steps into the open highway road
-    if (distToGate < 45 && this.bossDefeated) {
+    // Instant smooth trigger with generous 75px radius
+    if (distToGate < 75 && this.bossDefeated) {
       this.advanceToNextBiome();
     }
 
@@ -326,11 +326,12 @@ export class Game {
       const chY = ch.r * 32 + 16;
       const dist = Math.hypot(p.x - chX, p.y - chY);
 
-      let triggered = dist < 42;
+      // Generous proximity open (65px) or hit by attack
+      let triggered = dist < 65;
 
       if (!triggered && p.activeAttacks) {
         for (const atk of p.activeAttacks) {
-          if (Math.hypot(atk.x - chX, atk.y - chY) <= (atk.radius || 40)) {
+          if (Math.hypot(atk.x - chX, atk.y - chY) <= (atk.radius || 45) + 20) {
             triggered = true;
             break;
           }
