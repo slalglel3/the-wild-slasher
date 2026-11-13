@@ -1,4 +1,4 @@
-// Isometric 2D Renderer - 'The Wild Darkness' Style with High-Res Animation Sprites & World Props
+// Isometric 2D Renderer - 'The Wild Darkness' Style with Animations, Minimap, Monsters & World Gate
 
 import { CONFIG } from '../config.js';
 
@@ -10,7 +10,7 @@ export class Renderer {
     this.tileW = CONFIG.TILE_WIDTH;
     this.tileH = CONFIG.TILE_HEIGHT;
 
-    // Load High-Res Image Assets & Animation Frames
+    // Load High-Res Image Assets
     this.assets = {
       playerIdle: this.loadImage('./assets/player/warrior_idle.png'),
       playerRun: [
@@ -24,12 +24,29 @@ export class Renderer {
         this.loadImage('./assets/player/slash_1.png'),
         this.loadImage('./assets/player/slash_2.png')
       ],
-      // World Props & Tiles
+      // World Props
       tileGrass: this.loadImage('./assets/world/tile_grass.png'),
       propTree: this.loadImage('./assets/world/prop_tree.png'),
       propRock: this.loadImage('./assets/world/prop_rock.png'),
-      propAltar: this.loadImage('./assets/world/prop_altar.png'),
+      propGateway: this.loadImage('./assets/world/prop_gateway.png'),
       propChest: this.loadImage('./assets/world/prop_chest.png'),
+      // Monsters
+      monsters: {
+        WOLF: this.loadImage('./assets/monsters/monster_wolf.png'),
+        GOBLIN: this.loadImage('./assets/monsters/monster_goblin.png'),
+        SCORPION: this.loadImage('./assets/monsters/monster_scorpion.png'),
+        IMP: this.loadImage('./assets/monsters/monster_imp.png'),
+        BOSS: this.loadImage('./assets/monsters/monster_boss.png')
+      },
+      // Equipment Item Icons
+      items: {
+        WEAPON: this.loadImage('./assets/items/item_weapon.png'),
+        ARMOR: this.loadImage('./assets/items/item_armor.png'),
+        HELMET: this.loadImage('./assets/items/item_helmet.png'),
+        BOOTS: this.loadImage('./assets/items/item_boots.png'),
+        AMULET: this.loadImage('./assets/items/item_amulet.png'),
+        RING: this.loadImage('./assets/items/item_ring.png')
+      },
       // UI
       joystickBase: this.loadImage('./assets/ui/joystick_base.png'),
       joystickKnob: this.loadImage('./assets/ui/joystick_knob.png'),
@@ -51,7 +68,6 @@ export class Renderer {
     return img;
   }
 
-  // World (x, y) to Isometric Screen (sx, sy)
   toIso(x, y) {
     return {
       x: (x - y),
@@ -81,22 +97,20 @@ export class Renderer {
     ctx.save();
     ctx.translate(-camX, -camY);
 
-    // 2. Render Isometric Ground Tiles
+    // 2. Render Isometric Ground Tiles & Obstacles
     this.renderTileMap(ctx, game.map, biome, camX, camY, W, H);
 
-    // 3. Render Chests & Portal Altar
-    this.renderChestsAndPortal(ctx, game);
+    // 3. Render World Gateway (Path to Next World) & Chests
+    this.renderGatewayAndChests(ctx, game);
 
-    // 4. Collect & Y-Sort Entities (for proper depth rendering)
+    // 4. Collect & Y-Sort Entities (Player, Monsters, Items)
     const renderList = [];
 
-    // Drop items
     game.dropItems.forEach(item => {
       const iso = this.toIso(item.x, item.y);
       renderList.push({ type: 'ITEM', obj: item, isoY: iso.y, isoX: iso.x });
     });
 
-    // Monsters
     game.monsters.forEach(m => {
       if (m.alive) {
         const iso = this.toIso(m.x, m.y);
@@ -104,15 +118,12 @@ export class Renderer {
       }
     });
 
-    // Player
     if (!player.isDead) {
       renderList.push({ type: 'PLAYER', obj: player, isoY: pIso.y, isoX: pIso.x });
     }
 
-    // Sort by isoY (Top to Bottom)
     renderList.sort((a, b) => a.isoY - b.isoY);
 
-    // Draw sorted entities
     renderList.forEach(item => {
       if (item.type === 'ITEM') this.drawDropItem(ctx, item.obj, item.isoX, item.isoY);
       if (item.type === 'MONSTER') this.drawMonster(ctx, item.obj, item.isoX, item.isoY);
@@ -130,10 +141,13 @@ export class Renderer {
 
     ctx.restore();
 
-    // 8. Dark Vignette / Fog Overlay (Atmospheric survival feel)
+    // 8. Dark Vignette / Atmospheric Fog
     this.renderVignette(ctx, W, H);
 
-    // 9. Mobile Touch HUD & Virtual Controls with High-Res Assets
+    // 9. Interactive Radar Minimap (Top-Right)
+    this.renderMinimap(ctx, game, W, H);
+
+    // 10. Mobile Touch HUD & Virtual Controls
     this.renderTouchControls(ctx, game.input, player, W, H);
   }
 
@@ -149,7 +163,6 @@ export class Renderer {
         const isoX = (c - r) * halfW;
         const isoY = (c + r) * halfH;
 
-        // Culling
         if (isoX + halfW < camX - 70 || isoX - halfW > camX + W + 70 ||
             isoY + halfH < camY - 110 || isoY - halfH > camY + H + 70) {
           continue;
@@ -157,12 +170,10 @@ export class Renderer {
 
         const tileType = map.grid[r][c];
 
-        // 1. Render Ground Tile
+        // Ground Tile
         if (biome.id === 'GRASSLAND' && grassImg.loaded) {
-          // Render textured grass tile
           ctx.drawImage(grassImg, isoX - halfW, isoY - halfH, this.tileW, this.tileH + 12);
         } else {
-          // Fallback colored diamond
           ctx.beginPath();
           ctx.moveTo(isoX, isoY - halfH);
           ctx.lineTo(isoX + halfW, isoY);
@@ -185,17 +196,14 @@ export class Renderer {
           }
         }
 
-        // 2. Render Obstacles (Trees / Rocks)
+        // Obstacles (Trees / Rocks)
         if (tileType === 1) {
-          const isRock = (r * 7 + c * 13) % 5 === 0;
+          const isRock = (r * 7 + c * 13) % 4 === 0;
           if (isRock && rockImg.loaded) {
-            // Render Mossy Rock
             ctx.drawImage(rockImg, isoX - 22, isoY - 26, 44, 38);
           } else if (treeImg.loaded) {
-            // Render High-Res Oak Tree
             ctx.drawImage(treeImg, isoX - 36, isoY - 76, 72, 82);
           } else {
-            // Fallback obstacle block
             ctx.fillStyle = biome.objectColor;
             ctx.fillRect(isoX - 10, isoY - halfH - 18, 20, 20);
           }
@@ -204,45 +212,39 @@ export class Renderer {
     }
   }
 
-  renderChestsAndPortal(ctx, game) {
+  renderGatewayAndChests(ctx, game) {
     const map = game.map;
     const halfW = this.tileW / 2;
     const halfH = this.tileH / 2;
-    const altarImg = this.assets.propAltar;
+    const gateImg = this.assets.propGateway;
     const chestImg = this.assets.propChest;
 
-    // Portal / Altar
-    const pIsoX = (map.portalPos.c - map.portalPos.r) * halfW;
-    const pIsoY = (map.portalPos.c + map.portalPos.r) * halfH;
+    // World Highway Gateway (Path to Next World)
+    const gIsoX = (map.portalPos.c - map.portalPos.r) * halfW;
+    const gIsoY = (map.portalPos.c + map.portalPos.r) * halfH;
 
     ctx.save();
-    if (altarImg.loaded) {
-      ctx.drawImage(altarImg, pIsoX - 38, pIsoY - 48, 76, 76);
-    } else {
-      ctx.beginPath();
-      ctx.arc(pIsoX, pIsoY, 28, 0, Math.PI * 2);
-      ctx.fillStyle = game.bossDefeated ? '#00ffff44' : '#ff333333';
-      ctx.fill();
+    if (gateImg.loaded) {
+      // Draw massive ancient stone archway road gate
+      ctx.drawImage(gateImg, gIsoX - 48, gIsoY - 95, 96, 106);
     }
 
-    // Portal Light Glow
-    const glowColor = game.bossDefeated ? '#00ffff' : '#ff4444';
+    // Portal Highway Road Glow
+    const roadColor = game.bossDefeated ? '#00ffff' : '#ff4444';
     ctx.beginPath();
-    ctx.ellipse(pIsoX, pIsoY, 32, 16, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = glowColor;
+    ctx.ellipse(gIsoX, gIsoY, 40, 20, 0, 0, Math.PI * 2);
+    ctx.fillStyle = game.bossDefeated ? 'rgba(0, 255, 255, 0.25)' : 'rgba(255, 68, 68, 0.2)';
+    ctx.fill();
+    ctx.strokeStyle = roadColor;
     ctx.lineWidth = 3;
     ctx.stroke();
-
-    // Portal Light Pillar
-    ctx.fillStyle = game.bossDefeated ? 'rgba(0, 255, 255, 0.45)' : 'rgba(255, 68, 68, 0.25)';
-    ctx.fillRect(pIsoX - 8, pIsoY - 75, 16, 75);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.shadowColor = '#000';
     ctx.shadowBlur = 4;
-    ctx.fillText(game.bossDefeated ? '★ 차원 관문 (활성화됨) ★' : '빛의 유적 제단', pIsoX, pIsoY - 82);
+    ctx.fillText(game.bossDefeated ? '★ 다음 월드로 통하는 길 (진입 가능) ★' : '봉인된 관문 (보스 토벌 필요)', gIsoX, gIsoY - 105);
     ctx.shadowBlur = 0;
     ctx.restore();
 
@@ -250,7 +252,6 @@ export class Renderer {
     map.chests.forEach(ch => {
       const cIsoX = (ch.c - ch.r) * halfW;
       const cIsoY = (ch.c + ch.r) * halfH;
-
       if (chestImg.loaded) {
         ctx.drawImage(chestImg, cIsoX - 18, cIsoY - 24, 36, 36);
       } else {
@@ -260,6 +261,7 @@ export class Renderer {
     });
   }
 
+  // Draw Player with Center-Pivot Whirlwind & Precise Run Animation
   drawPlayer(ctx, player, isoX, isoY) {
     ctx.save();
 
@@ -280,43 +282,29 @@ export class Renderer {
 
     const isMoving = Math.hypot(player.vx, player.vy) > 10;
     const isSlashing = player.slashAnimTimer > 0;
+    const isWhirlwind = player.whirlwindTimer > 0;
 
-    // Bounce & Body Placement
+    // Body Bob
     const bob = isMoving ? Math.abs(Math.sin(player.animTime * 14)) * 4 : Math.sin(player.animTime * 3) * 1.5;
     const bodyY = isoY - bob;
 
-    ctx.translate(isoX, bodyY);
-    ctx.scale(player.facing, 1);
-
-    // Whirlwind rotation effect
-    if (player.whirlwindTimer > 0) {
-      ctx.rotate(player.animTime * 24);
-    }
-
-    // Hurt flash filter
-    if (player.invincibleTimer > 0) {
-      ctx.filter = 'brightness(1.5) drop-shadow(0 0 5px #ff4444)';
-    }
-
-    // Frame Selection based on state:
+    // Frame Selection
     let currentSprite = this.assets.playerIdle;
     let sw = 50;
     let sh = 70;
 
     if (isSlashing) {
-      // 3-Frame Slash Animation Cycle
       const slashProgress = 1 - (player.slashAnimTimer / 0.22);
       const frameIdx = Math.min(2, Math.max(0, Math.floor(slashProgress * 3)));
       const slashSprite = this.assets.playerSlash[frameIdx];
       if (slashSprite && slashSprite.loaded) {
         currentSprite = slashSprite;
-        sw = frameIdx === 1 ? 80 : 54; // Wider arc on middle slash frame
+        sw = frameIdx === 1 ? 80 : 54;
         sh = 72;
       }
     } else if (isMoving) {
-      // 4-Frame Dynamic Run Cycle Animation (Legs and arms visibly moving!)
-      const runIdx = Math.floor(player.animTime * 11) % 4;
-      const runSprite = this.assets.playerRun[runIdx];
+      // 4-Frame Dynamic Run Cycle
+      const runSprite = this.assets.playerRun[player.runFrame % 4];
       if (runSprite && runSprite.loaded) {
         currentSprite = runSprite;
         sw = 50;
@@ -324,14 +312,22 @@ export class Renderer {
       }
     }
 
+    // ★ FIXED: Whirlwind Center-Pivot Rotation!
+    // Translate to center of body (-sh/2) so character spins like a top, NOT like a windmill!
+    ctx.translate(isoX, bodyY - sh / 2);
+    ctx.scale(player.facing, 1);
+
+    if (isWhirlwind) {
+      ctx.rotate(player.animTime * 28);
+    }
+
+    if (player.invincibleTimer > 0) {
+      ctx.filter = 'brightness(1.5) drop-shadow(0 0 5px #ff4444)';
+    }
+
     if (currentSprite && currentSprite.loaded) {
-      ctx.drawImage(currentSprite, -sw / 2, -sh + 6, sw, sh);
-    } else {
-      // Fallback
-      ctx.fillStyle = '#ffdbac';
-      ctx.beginPath();
-      ctx.arc(0, -20, 12, 0, Math.PI * 2);
-      ctx.fill();
+      // Draw centered around (0, 0)
+      ctx.drawImage(currentSprite, -sw / 2, -sh / 2, sw, sh);
     }
 
     ctx.restore();
@@ -353,6 +349,7 @@ export class Renderer {
     ctx.fillRect(isoX - 20, isoY - 64, Math.max(0, 40 * hpPct), 5);
   }
 
+  // Draw Monster with Sprite Assets
   drawMonster(ctx, m, isoX, isoY) {
     ctx.save();
 
@@ -363,100 +360,160 @@ export class Renderer {
     ctx.fill();
 
     const bob = Math.abs(Math.sin(m.animTime * 8)) * 3;
-    const bodyY = isoY - m.radius - bob;
+    const bodyY = isoY - bob;
 
     ctx.translate(isoX, bodyY);
     ctx.scale(m.facing, 1);
 
-    // Hurt flash
     if (m.hurtTimer > 0) {
       ctx.filter = 'brightness(2.0)';
     }
 
-    // Monster Drawing by Biome / Boss
-    if (m.isBoss) {
-      ctx.fillStyle = '#8b0000';
-      ctx.beginPath();
-      ctx.arc(0, 0, m.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffff00';
-      ctx.fillRect(4, -6, 5, 5);
-      ctx.fillRect(14, -6, 5, 5);
-      ctx.fillStyle = '#111';
-      ctx.beginPath();
-      ctx.moveTo(-10, -m.radius);
-      ctx.lineTo(-20, -m.radius - 18);
-      ctx.lineTo(-4, -m.radius);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(10, -m.radius);
-      ctx.lineTo(20, -m.radius - 18);
-      ctx.lineTo(4, -m.radius);
-      ctx.fill();
-    } else {
-      ctx.fillStyle = m.key.includes('WOLF') ? '#708090' :
-                      m.key.includes('GOBLIN') ? '#556b2f' :
-                      m.key.includes('SPIDER') ? '#4b0082' :
-                      m.key.includes('SCORPION') ? '#b8860b' :
-                      m.key.includes('IMP') ? '#b22222' : '#808080';
-      ctx.beginPath();
-      ctx.roundRect(-m.radius, -m.radius, m.radius * 2, m.radius * 2, 6);
-      ctx.fill();
+    // Pick sprite based on monster key
+    const monsterSprites = this.assets.monsters;
+    let sprite = null;
+    let mw = 44, mh = 48;
 
-      ctx.fillStyle = '#ff2222';
-      ctx.fillRect(2, -4, 3, 4);
-      ctx.fillRect(8, -4, 3, 4);
+    if (m.isBoss) {
+      sprite = monsterSprites.BOSS;
+      mw = 68; mh = 84;
+    } else if (m.key.includes('WOLF')) {
+      sprite = monsterSprites.WOLF;
+      mw = 54; mh = 44;
+    } else if (m.key.includes('SCORPION')) {
+      sprite = monsterSprites.SCORPION;
+      mw = 48; mh = 46;
+    } else if (m.key.includes('IMP')) {
+      sprite = monsterSprites.IMP;
+      mw = 36; mh = 46;
+    } else {
+      sprite = monsterSprites.GOBLIN;
+      mw = 40; mh = 50;
+    }
+
+    if (sprite && sprite.loaded) {
+      ctx.drawImage(sprite, -mw / 2, -mh, mw, mh);
+    } else {
+      // Fallback
+      ctx.fillStyle = m.isBoss ? '#8b0000' : '#556b2f';
+      ctx.beginPath();
+      ctx.arc(0, -m.radius, m.radius, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
 
     // Monster HP Bar & Level
-    const hpPct = m.hp / m.maxHp;
-    const barW = m.isBoss ? 60 : 28;
+    const hpPct = Math.max(0, m.hp / m.maxHp);
+    const barW = m.isBoss ? 64 : 30;
     ctx.fillStyle = '#222';
-    ctx.fillRect(isoX - barW / 2, isoY - m.radius * 2 - 14, barW, 4);
+    ctx.fillRect(isoX - barW / 2, isoY - mh - 12, barW, 4);
     ctx.fillStyle = m.isBoss ? '#ff1111' : '#ffaa00';
-    ctx.fillRect(isoX - barW / 2, isoY - m.radius * 2 - 14, Math.max(0, barW * hpPct), 4);
+    ctx.fillRect(isoX - barW / 2, isoY - mh - 12, Math.max(0, barW * hpPct), 4);
 
     if (m.isBoss) {
       ctx.fillStyle = '#ffd700';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(m.name, isoX, isoY - m.radius * 2 - 18);
+      ctx.fillText(m.name, isoX, isoY - mh - 16);
     }
   }
 
+  // Draw Drop Item with Slot Icon
   drawDropItem(ctx, drop, isoX, isoY) {
     const item = drop.item;
     const bounce = Math.abs(Math.sin(drop.life * 5)) * 6;
     const iy = isoY - bounce;
 
-    // Diablo-style Vertical Light Pillar
     ctx.save();
+    // Diablo Vertical Loot Beam
     const grad = ctx.createLinearGradient(isoX, iy, isoX, iy - 50);
     grad.addColorStop(0, item.color + 'aa');
     grad.addColorStop(1, item.color + '00');
     ctx.fillStyle = grad;
     ctx.fillRect(isoX - 3, iy - 50, 6, 50);
 
-    // Glowing Diamond Core
-    ctx.fillStyle = item.color;
-    ctx.beginPath();
-    ctx.moveTo(isoX, iy - 12);
-    ctx.lineTo(isoX + 6, iy - 6);
-    ctx.lineTo(isoX, iy);
-    ctx.lineTo(isoX - 6, iy - 6);
-    ctx.closePath();
-    ctx.fill();
+    // Render Equipment Icon
+    const iconImg = this.assets.items[item.slot];
+    if (iconImg && iconImg.loaded) {
+      ctx.drawImage(iconImg, isoX - 14, iy - 28, 28, 28);
+    } else {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(isoX, iy - 14, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Name Tag
-    ctx.fillStyle = '#000000bb';
-    ctx.fillRect(isoX - 35, iy - 26, 70, 13);
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(isoX - 36, iy - 42, 72, 13);
     ctx.fillStyle = item.color;
     ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(item.name, isoX, iy - 16);
+    ctx.fillText(item.name, isoX, iy - 32);
     ctx.restore();
+  }
+
+  // Interactive Radar Minimap (110x110)
+  renderMinimap(ctx, game, W, H) {
+    const map = game.map;
+    const player = game.player;
+    if (!map) return;
+
+    ctx.save();
+    const mmSize = 100;
+    const mmX = W - mmSize - 12;
+    const mmY = 56;
+
+    // Minimap Outer Circular Frame
+    ctx.beginPath();
+    ctx.arc(mmX + mmSize / 2, mmY + mmSize / 2, mmSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 14, 20, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = '#4a5568';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.clip(); // Clip contents within circle
+
+    const scale = mmSize / (map.cols * 32);
+
+    // Draw Next World Gateway icon (Green)
+    const gx = mmX + (map.portalPos.c * 32) * scale;
+    const gy = mmY + (map.portalPos.r * 32) * scale;
+    ctx.fillStyle = game.bossDefeated ? '#00ffff' : '#ff4444';
+    ctx.beginPath();
+    ctx.arc(gx, gy, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw Monsters (Red dots)
+    ctx.fillStyle = '#ff3333';
+    game.monsters.forEach(m => {
+      if (m.alive) {
+        const mx = mmX + m.x * scale;
+        const my = mmY + m.y * scale;
+        ctx.beginPath();
+        ctx.arc(mx, my, m.isBoss ? 4.5 : 2, 0, Math.PI * 2);
+        if (m.isBoss) ctx.fillStyle = '#ffff00';
+        ctx.fill();
+        ctx.fillStyle = '#ff3333';
+      }
+    });
+
+    // Draw Player (Yellow Arrow/Dot)
+    const px = mmX + player.x * scale;
+    const py = mmY + player.y * scale;
+    ctx.fillStyle = '#00ffcc';
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // Minimap Title
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('미니맵', mmX + mmSize / 2, mmY + mmSize + 11);
   }
 
   renderAttackVFX(ctx, player) {
@@ -532,30 +589,14 @@ export class Renderer {
       const cx = input.joystick.currX;
       const cy = input.joystick.currY;
 
-      // Draw Runic Base Ring
       if (joyBase.loaded) {
         ctx.drawImage(joyBase, sx - 65, sy - 65, 130, 130);
-      } else {
-        ctx.beginPath();
-        ctx.arc(sx, sy, input.joystick.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.fill();
-        ctx.strokeStyle = '#00ffff';
-        ctx.stroke();
       }
-
-      // Draw Glowing Gem Knob
       if (joyKnob.loaded) {
         ctx.drawImage(joyKnob, cx - 25, cy - 25, 50, 50);
-      } else {
-        ctx.beginPath();
-        ctx.arc(cx, cy, 22, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 200, 255, 0.8)';
-        ctx.fill();
       }
       ctx.restore();
     } else {
-      // Idle guide prompt on left
       ctx.save();
       if (joyBase.loaded) {
         ctx.globalAlpha = 0.25;
@@ -573,12 +614,10 @@ export class Renderer {
     const sk = player.skillSystem.skills;
     const skillImgs = this.assets.skills;
 
-    // Helper to draw image button with cooldown mask
     const drawSkillBtn = (x, y, r, imgAsset, skillKey, label, cost) => {
       const skill = sk[skillKey];
       ctx.save();
 
-      // Outer glow & border
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = '#1a1816';
@@ -587,19 +626,13 @@ export class Renderer {
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      // Draw high-res skill icon
       if (imgAsset && imgAsset.loaded) {
         ctx.save();
-        ctx.clip(); // Clip within circle
+        ctx.clip();
         ctx.drawImage(imgAsset, x - r, y - r, r * 2, r * 2);
         ctx.restore();
-      } else {
-        ctx.font = `${Math.floor(r * 0.75)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(skill.icon, x, y + r * 0.28);
       }
 
-      // Cooldown slice overlay
       if (skill.timer > 0 && skill.cooldown > 0) {
         const pct = skill.timer / skill.cooldown;
         ctx.beginPath();
@@ -618,7 +651,6 @@ export class Renderer {
         ctx.shadowBlur = 0;
       }
 
-      // Insufficient MP dark overlay
       if (player.mp < skill.cost) {
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -626,7 +658,6 @@ export class Renderer {
         ctx.fill();
       }
 
-      // Name & key label below button
       ctx.fillStyle = '#f0f0f0';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
@@ -637,15 +668,10 @@ export class Renderer {
       ctx.restore();
     };
 
-    // Main Slash (Big center-right button)
     drawSkillBtn(W - 90, H - 90, 44, skillImgs.SLASH, 'SLASH', '베기', 0);
-    // Whirlwind (1)
     drawSkillBtn(W - 175, H - 80, 28, skillImgs.WHIRLWIND, 'WHIRLWIND', '휠윈드 [1]', sk.WHIRLWIND.cost);
-    // Dash (2)
     drawSkillBtn(W - 80, H - 180, 28, skillImgs.DASH, 'DASH', '돌진 [2]', sk.DASH.cost);
-    // Ground Slam (3)
     drawSkillBtn(W - 150, H - 150, 28, skillImgs.GROUND_SLAM, 'GROUND_SLAM', '강타 [3]', sk.GROUND_SLAM.cost);
-    // War Cry (4)
     drawSkillBtn(W - 225, H - 130, 26, skillImgs.WAR_CRY, 'WAR_CRY', '함성 [4]', sk.WAR_CRY.cost);
   }
 }

@@ -1,4 +1,4 @@
-// Player Class - Warrior
+// Player Class - Warrior with Clamping, Obstacle Collision & Animation Frame Controller
 
 import { Entity } from './Entity.js';
 import { StatSystem } from '../systems/StatSystem.js';
@@ -9,7 +9,7 @@ import { audio } from '../engine/Audio.js';
 
 export class Player extends Entity {
   constructor(x, y) {
-    super(x, y, 16);
+    super(x, y, 14);
     this.classKey = 'WARRIOR';
     this.classData = CONFIG.CLASSES.WARRIOR;
     
@@ -18,11 +18,11 @@ export class Player extends Entity {
     this.inventory = new InventorySystem();
     this.skillSystem = new SkillSystem();
 
-    // Progression
+    // Progression - Balanced Leveling
     this.level = 1;
     this.exp = 0;
-    this.expToNext = 100;
-    this.advancementTier = 0; // 0: None, 1: Lv30, 2: Lv60
+    this.expToNext = 250; // Slower, more rewarding progression
+    this.advancementTier = 0;
 
     // Vitals
     this.hp = 100;
@@ -35,12 +35,18 @@ export class Player extends Entity {
     this.invincibleTimer = 0;
     this.dashTimer = 0;
     this.whirlwindTimer = 0;
-    this.slashAnimTimer = 0; // Timer for slash animation frames
+    this.slashAnimTimer = 0;
+    this.hazardTickTimer = 0;
+    this.inHazard = false;
+
+    // Animation Frame Timers (Accurate leg & arm movement)
+    this.runFrame = 0;
+    this.runFrameTimer = 0;
     this.animTime = 0;
 
     // Visual trails
     this.trails = [];
-    this.activeAttacks = []; // Visual slash arcs / slam waves
+    this.activeAttacks = [];
 
     this.recalcStats();
     this.hp = this.derived.maxHp;
@@ -50,7 +56,6 @@ export class Player extends Entity {
   recalcStats() {
     const equipStats = this.inventory.getEquipStats();
     this.derived = this.statSystem.computeDerived(this.level, equipStats);
-    // WarCry buff boost
     if (this.skillSystem.isBuffActive('WAR_CRY')) {
       this.derived.minDmg = Math.floor(this.derived.minDmg * 1.35);
       this.derived.maxDmg = Math.floor(this.derived.maxDmg * 1.35);
@@ -66,10 +71,10 @@ export class Player extends Entity {
     while (this.exp >= this.expToNext && this.level < CONFIG.MAX_LEVEL) {
       this.exp -= this.expToNext;
       this.level += 1;
-      this.expToNext = Math.floor(100 * Math.pow(1.14, this.level - 1));
+      // Exponentially scaling curve for satisfying RPG grinding
+      this.expToNext = Math.floor(250 * Math.pow(1.22, this.level - 1));
       this.statSystem.addUnallocatedPoints(CONFIG.STAT_POINTS_PER_LEVEL);
       
-      // Check Job Advancements
       if (this.level === CONFIG.ADVANCEMENT_1_LEVEL && this.advancementTier === 0) {
         this.advancementTier = 1;
       }
@@ -89,28 +94,54 @@ export class Player extends Entity {
     return leveledUp;
   }
 
-  update(dt, input, monsters, dropItems, floatingTexts, particles) {
+  // Penalty on Revive: Lose 20% experience
+  penalizeOnRevive() {
+    const penalty = Math.floor(this.expToNext * 0.2);
+    this.exp = Math.max(0, this.exp - penalty);
+    this.hp = this.derived.maxHp;
+    this.mp = this.derived.maxMp;
+    this.isDead = false;
+    this.invincibleTimer = 2.0; // 2 seconds safety shield upon revive
+  }
+
+  update(dt, input, map, monsters, dropItems, floatingTexts, particles, game) {
     if (this.isDead) return;
 
     this.animTime += dt;
     this.recalcStats();
     this.skillSystem.update(dt, this.derived.cdr);
 
-    // HP & MP natural regen
+    // Natural regen
     this.hp = Math.min(this.derived.maxHp, this.hp + (this.derived.maxHp * 0.015 + 2) * dt);
     this.mp = Math.min(this.derived.maxMp, this.mp + (this.derived.maxMp * 0.05 + 5) * dt);
 
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
     if (this.slashAnimTimer > 0) this.slashAnimTimer -= dt;
 
-    // Handle Dash mobility
+    // Check Current Tile for Hazards (Poison swamp, lava, etc.)
+    const currC = Math.floor(this.x / 32);
+    const currR = Math.floor(this.y / 32);
+    if (currR >= 0 && currR < map.rows && currC >= 0 && currC < map.cols) {
+      if (map.grid[currR][currC] === 3) {
+        this.inHazard = true;
+        this.hazardTickTimer -= dt;
+        if (this.hazardTickTimer <= 0) {
+          this.hazardTickTimer = 0.5;
+          const hazardDmg = Math.floor(10 + this.level * 2);
+          this.takeDamage(hazardDmg, floatingTexts, particles, game, '환경 피해');
+        }
+      } else {
+        this.inHazard = false;
+      }
+    }
+
+    // Handle Dash mobility with collision checking
     if (this.dashTimer > 0) {
       this.dashTimer -= dt;
-      this.x += this.dashDir.x * this.skillSystem.skills.DASH.speed * dt;
-      this.y += this.dashDir.y * this.skillSystem.skills.DASH.speed * dt;
+      const dashSpd = this.skillSystem.skills.DASH.speed;
+      this.moveWithCollision(this.dashDir.x * dashSpd * dt, this.dashDir.y * dashSpd * dt, map);
       this.trails.push({ x: this.x, y: this.y, life: 0.15, maxLife: 0.15 });
 
-      // Deal slight collision damage while dashing
       monsters.forEach(m => {
         if (m.alive && this.distanceTo(m) < this.radius + m.radius + 15) {
           this.applyDamageToMonster(m, this.derived.minDmg * 0.8, floatingTexts, particles, false);
@@ -119,31 +150,44 @@ export class Player extends Entity {
       return;
     }
 
-    // Movement via Virtual Joystick or WASD
+    // Movement calculation
     let mx = input.moveX;
     let my = input.moveY;
     const len = Math.hypot(mx, my);
-    if (len > 0.1) {
+    const isMoving = len > 0.1;
+
+    if (isMoving) {
       mx /= len;
       my /= len;
-      const spd = this.derived.moveSpeed;
+      let spd = this.derived.moveSpeed;
+      if (this.inHazard) spd *= 0.6; // 40% slow on hazard tiles
+
       this.vx = mx * spd;
       this.vy = my * spd;
-      this.x += this.vx * dt;
-      this.y += this.vy * dt;
+      this.moveWithCollision(this.vx * dt, this.vy * dt, map);
+
       this.facing = mx >= 0 ? 1 : -1;
       this.targetAngle = Math.atan2(my, mx);
+
+      // Distinct 4-Frame Run Animation Controller (0.11s per frame)
+      this.runFrameTimer += dt;
+      if (this.runFrameTimer >= 0.11) {
+        this.runFrameTimer = 0;
+        this.runFrame = (this.runFrame + 1) % 4;
+      }
     } else {
       this.vx = 0;
       this.vy = 0;
+      this.runFrame = 0;
+      this.runFrameTimer = 0;
     }
 
-    // Whirlwind active spinning
+    // Whirlwind active spin logic
     if (this.whirlwindTimer > 0) {
       this.whirlwindTimer -= dt;
       this.whirlwindHitTimer = (this.whirlwindHitTimer || 0) - dt;
       if (this.whirlwindHitTimer <= 0) {
-        this.whirlwindHitTimer = 0.12; // Hit every 0.12s
+        this.whirlwindHitTimer = 0.12;
         audio.playHit();
         const range = this.skillSystem.skills.WHIRLWIND.range;
         monsters.forEach(m => {
@@ -152,33 +196,66 @@ export class Player extends Entity {
             this.applyDamageToMonster(m, dmg, floatingTexts, particles, true);
           }
         });
-        // Particle ring
         particles.spawnWhirlwindRing(this.x, this.y, range);
       }
     }
 
-    // Update active attacks visual animations
+    // Update visuals
     for (let i = this.activeAttacks.length - 1; i >= 0; i--) {
       const atk = this.activeAttacks[i];
       atk.life -= dt;
       if (atk.life <= 0) this.activeAttacks.splice(i, 1);
     }
-
-    // Update trails
     for (let i = this.trails.length - 1; i >= 0; i--) {
       this.trails[i].life -= dt;
       if (this.trails[i].life <= 0) this.trails.splice(i, 1);
     }
 
-    // Handle Skill Actions triggered by Input
     this.handleSkills(input, monsters, floatingTexts, particles);
   }
 
+  // Clamping to map borders + Obstacle Wall Collision
+  moveWithCollision(dx, dy, map) {
+    if (!map || !map.grid) {
+      this.x += dx;
+      this.y += dy;
+      return;
+    }
+    const minBound = 36;
+    const maxBoundX = (map.cols - 1.5) * 32;
+    const maxBoundY = (map.rows - 1.5) * 32;
+
+    // Test X-axis movement
+    const targetX = Math.max(minBound, Math.min(maxBoundX, this.x + dx));
+    const targetGridCX = Math.floor(targetX / 32);
+    const currGridRY = Math.floor(this.y / 32);
+
+    if (currGridRY >= 0 && currGridRY < map.rows && targetGridCX >= 0 && targetGridCX < map.cols) {
+      if (map.grid[currGridRY] && map.grid[currGridRY][targetGridCX] !== 1) {
+        this.x = targetX;
+      }
+    } else {
+      this.x = targetX;
+    }
+
+    // Test Y-axis movement
+    const targetY = Math.max(minBound, Math.min(maxBoundY, this.y + dy));
+    const targetGridRY = Math.floor(targetY / 32);
+    const currGridCX = Math.floor(this.x / 32);
+
+    if (targetGridRY >= 0 && targetGridRY < map.rows && currGridCX >= 0 && currGridCX < map.cols) {
+      if (map.grid[targetGridRY] && map.grid[targetGridRY][currGridCX] !== 1) {
+        this.y = targetY;
+      }
+    } else {
+      this.y = targetY;
+    }
+  }
+
   handleSkills(input, monsters, floatingTexts, particles) {
-    // 1. Slash (Basic Attack)
     if (input.triggerSlash && this.skillSystem.canCast('SLASH', this.mp)) {
       this.skillSystem.cast('SLASH', this.derived.cdr);
-      this.slashAnimTimer = 0.22; // 3-frame attack animation duration
+      this.slashAnimTimer = 0.22;
       audio.playSlash();
       const range = this.skillSystem.skills.SLASH.range;
       const angle = this.targetAngle;
@@ -206,15 +283,13 @@ export class Player extends Entity {
       });
     }
 
-    // 2. Whirlwind
     if (input.triggerWhirlwind && this.skillSystem.canCast('WHIRLWIND', this.mp)) {
       this.skillSystem.cast('WHIRLWIND', this.derived.cdr);
       this.mp -= this.skillSystem.skills.WHIRLWIND.cost;
       audio.playWhirlwind();
-      this.whirlwindTimer = 1.2; // Spin for 1.2 seconds
+      this.whirlwindTimer = 1.2;
     }
 
-    // 3. Dash
     if (input.triggerDash && this.skillSystem.canCast('DASH', this.mp)) {
       this.skillSystem.cast('DASH', this.derived.cdr);
       this.mp -= this.skillSystem.skills.DASH.cost;
@@ -229,7 +304,6 @@ export class Player extends Entity {
       }
     }
 
-    // 4. Ground Slam
     if (input.triggerSlam && this.skillSystem.canCast('GROUND_SLAM', this.mp)) {
       this.skillSystem.cast('GROUND_SLAM', this.derived.cdr);
       this.mp -= this.skillSystem.skills.GROUND_SLAM.cost;
@@ -254,7 +328,6 @@ export class Player extends Entity {
       });
     }
 
-    // 5. War Cry
     if (input.triggerWarCry && this.skillSystem.canCast('WAR_CRY', this.mp)) {
       this.skillSystem.cast('WAR_CRY', this.derived.cdr);
       this.mp -= this.skillSystem.skills.WAR_CRY.cost;
@@ -267,15 +340,12 @@ export class Player extends Entity {
   applyDamageToMonster(monster, rawDmg, floatingTexts, particles, canCrit = true, stun = false) {
     const isCrit = canCrit && (Math.random() * 100 < this.derived.critChance);
     let finalDmg = Math.max(1, rawDmg - monster.defense * 0.4);
-    if (isCrit) {
-      finalDmg *= (this.derived.critDamage / 100);
-    }
+    if (isCrit) finalDmg *= (this.derived.critDamage / 100);
     finalDmg = Math.floor(finalDmg);
 
     monster.takeDamage(finalDmg, isCrit, stun);
     audio.playHit();
 
-    // Floating combat text
     floatingTexts.push({
       x: monster.x + (Math.random() * 20 - 10),
       y: monster.y - 25,
@@ -288,17 +358,17 @@ export class Player extends Entity {
     particles.spawnBloodSparks(monster.x, monster.y, isCrit ? 12 : 6);
   }
 
-  takeDamage(amount, floatingTexts, particles) {
+  takeDamage(amount, floatingTexts, particles, game, label = null) {
     if (this.invincibleTimer > 0 || this.isDead) return;
     const reduced = Math.max(1, Math.floor(amount - this.derived.defense * 0.4));
     this.hp -= reduced;
-    this.invincibleTimer = 0.4; // 0.4s immunity
+    this.invincibleTimer = 0.4;
 
     audio.playHit();
     floatingTexts.push({
       x: this.x,
       y: this.y - 28,
-      text: `-${reduced}`,
+      text: label ? `${label} -${reduced}` : `-${reduced}`,
       color: '#ff4444',
       scale: 1.1,
       life: 0.7
@@ -307,6 +377,9 @@ export class Player extends Entity {
     if (this.hp <= 0) {
       this.hp = 0;
       this.isDead = true;
+      if (game && game.onPlayerDeath) {
+        game.onPlayerDeath();
+      }
     }
   }
 }

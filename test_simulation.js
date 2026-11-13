@@ -152,7 +152,7 @@ const dt = 0.033; // ~30fps simulation
 
 for (let tick = 0; tick < 1000; tick++) {
   bot.update(dt);
-  mockGame.player.update(dt, mockGame.input, mockGame.monsters, mockGame.dropItems, mockGame.floatingTexts, mockGame.particles);
+  mockGame.player.update(dt, mockGame.input, mockGame.map, mockGame.monsters, mockGame.dropItems, mockGame.floatingTexts, mockGame.particles, mockGame);
   
   for (let i = mockGame.monsters.length - 1; i >= 0; i--) {
     const m = mockGame.monsters[i];

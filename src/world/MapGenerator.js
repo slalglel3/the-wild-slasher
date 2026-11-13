@@ -1,7 +1,7 @@
-// Procedural Isometric Map Generator
+// Procedural Isometric Map Generator (Expanded 120x120 World)
 
 export class MapGenerator {
-  constructor(cols = 44, rows = 44) {
+  constructor(cols = 120, rows = 120) {
     this.cols = cols;
     this.rows = rows;
   }
@@ -11,12 +11,12 @@ export class MapGenerator {
     for (let r = 0; r < this.rows; r++) {
       grid[r] = [];
       for (let c = 0; c < this.cols; c++) {
-        // Borders are obstacles
+        // Outer Borders are impassable walls
         if (r === 0 || r === this.rows - 1 || c === 0 || c === this.cols - 1) {
           grid[r][c] = 1; // Obstacle wall
         } else {
-          // Cellular noise: ~18% chance of rock/tree obstacle
-          grid[r][c] = Math.random() < 0.17 ? 1 : 0;
+          // Cellular noise: ~16% natural tree/rock obstacles
+          grid[r][c] = Math.random() < 0.16 ? 1 : 0;
         }
       }
     }
@@ -38,11 +38,11 @@ export class MapGenerator {
       }
     }
 
-    // Clear safe starting area around center-left (r: 6, c: 6)
-    const startR = 6;
-    const startC = 6;
-    for (let dr = -3; dr <= 3; dr++) {
-      for (let dc = -3; dc <= 3; dc++) {
+    // Clear safe starting area around top-left (r: 10, c: 10)
+    const startR = 10;
+    const startC = 10;
+    for (let dr = -4; dr <= 4; dr++) {
+      for (let dc = -4; dc <= 4; dc++) {
         const nr = startR + dr;
         const nc = startC + dc;
         if (nr >= 1 && nr < this.rows - 1 && nc >= 1 && nc < this.cols - 1) {
@@ -51,41 +51,50 @@ export class MapGenerator {
       }
     }
 
-    // Portal / Boss altar location at bottom-right (r: rows-7, c: cols-7)
-    const portalR = this.rows - 7;
-    const portalC = this.cols - 7;
-    for (let dr = -3; dr <= 3; dr++) {
-      for (let dc = -3; dc <= 3; dc++) {
-        const nr = portalR + dr;
-        const nc = portalC + dc;
+    // World Highway Gate (Road leading to Next World) at bottom-right (r: rows-10, c: cols-10)
+    const gateR = this.rows - 10;
+    const gateC = this.cols - 10;
+    for (let dr = -5; dr <= 5; dr++) {
+      for (let dc = -5; dc <= 5; dc++) {
+        const nr = gateR + dr;
+        const nc = gateC + dc;
         if (nr >= 1 && nr < this.rows - 1 && nc >= 1 && nc < this.cols - 1) {
           grid[nr][nc] = 0;
         }
       }
     }
 
-    // Place Hazards based on biome
+    // Pave a clear road path towards the gate near the end
+    for (let i = 0; i <= 8; i++) {
+      if (gateR - i >= 1 && gateC - i >= 1) {
+        grid[gateR - i][gateC - i] = 0;
+        grid[gateR - i + 1][gateC - i] = 0;
+        grid[gateR - i][gateC - i + 1] = 0;
+      }
+    }
+
+    // Place Hazards based on biome (Swamp, Lava, Ice, Heatwave)
     const hazards = [];
     if (biomeData.hazard) {
-      const hazardCount = 14 + Math.floor(tierLevel / 5);
+      const hazardCount = 60 + Math.floor(tierLevel * 1.5);
       for (let i = 0; i < hazardCount; i++) {
-        const hr = Math.floor(4 + Math.random() * (this.rows - 8));
-        const hc = Math.floor(4 + Math.random() * (this.cols - 8));
-        if (grid[hr][hc] === 0 && (Math.abs(hr - startR) > 5 || Math.abs(hc - startC) > 5)) {
-          grid[hr][hc] = 3; // Hazard tile
+        const hr = Math.floor(6 + Math.random() * (this.rows - 12));
+        const hc = Math.floor(6 + Math.random() * (this.cols - 12));
+        if (grid[hr][hc] === 0 && (Math.abs(hr - startR) > 6 || Math.abs(hc - startC) > 6)) {
+          grid[hr][hc] = 3; // Hazard tile (slow + debuff)
           hazards.push({ r: hr, c: hc, type: biomeData.hazard });
         }
       }
     }
 
-    // Find valid walkable spawn positions for chests and monsters
+    // Collect valid walkable spawn positions
     const walkableCells = [];
-    for (let r = 2; r < this.rows - 2; r++) {
-      for (let c = 2; c < this.cols - 2; c++) {
+    for (let r = 3; r < this.rows - 3; r++) {
+      for (let c = 3; c < this.cols - 3; c++) {
         if (grid[r][c] === 0) {
           const distToStart = Math.hypot(r - startR, c - startC);
-          const distToPortal = Math.hypot(r - portalR, c - portalC);
-          if (distToStart > 6 && distToPortal > 4) {
+          const distToGate = Math.hypot(r - gateR, c - gateC);
+          if (distToStart > 8 && distToGate > 6) {
             walkableCells.push({ r, c });
           }
         }
@@ -95,16 +104,16 @@ export class MapGenerator {
     // Shuffle walkable cells
     walkableCells.sort(() => 0.5 - Math.random());
 
-    // Place Chests (3~5 per map)
+    // Place Chests (12~18 per large world)
     const chests = [];
-    const chestCount = 3 + Math.floor(Math.random() * 3);
+    const chestCount = 12 + Math.floor(Math.random() * 6);
     for (let i = 0; i < chestCount && walkableCells.length > 0; i++) {
       chests.push(walkableCells.pop());
     }
 
-    // Place Monster Spawns (18~28 monsters per map)
+    // Place Monster Spawns (80~120 monsters in large world)
     const monsterSpawns = [];
-    const monsterCount = Math.min(walkableCells.length, 20 + Math.floor(tierLevel / 4));
+    const monsterCount = Math.min(walkableCells.length, 80 + Math.floor(tierLevel / 2));
     for (let i = 0; i < monsterCount; i++) {
       monsterSpawns.push(walkableCells.pop());
     }
@@ -114,7 +123,7 @@ export class MapGenerator {
       rows: this.rows,
       grid,
       startPos: { r: startR, c: startC },
-      portalPos: { r: portalR, c: portalC },
+      portalPos: { r: gateR, c: gateC }, // Exit Road Gate
       hazards,
       chests,
       monsterSpawns

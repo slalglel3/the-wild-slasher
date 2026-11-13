@@ -26,6 +26,14 @@ export class UIManager {
       this.closeModal();
     });
 
+    // Revive action button
+    const reviveBtn = document.getElementById('btn-do-revive');
+    if (reviveBtn) {
+      reviveBtn.addEventListener('click', () => {
+        this.game.executeRevive();
+      });
+    }
+
     // Stat allocation buttons
     ['STR', 'DEX', 'INT', 'VIT', 'LUK'].forEach(st => {
       const btn = document.getElementById(`btn-add-${st.toLowerCase()}`);
@@ -149,16 +157,34 @@ export class UIManager {
       const item = inv.equipment[slot];
       const div = document.createElement('div');
       div.className = 'equip-slot';
+      const iconSrc = `./assets/items/item_${slot.toLowerCase()}.png`;
+
       if (item) {
         div.style.borderColor = item.color;
-        div.innerHTML = `<span class="slot-name">${slot}</span><span style="color:${item.color}">${item.name}</span>`;
+        div.innerHTML = `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <img src="${iconSrc}" style="width:28px; height:28px; border-radius:4px; background:#111;">
+            <div>
+              <div class="slot-name">${slot}</div>
+              <div style="color:${item.color}; font-size:11px; font-weight:bold;">${item.name}</div>
+            </div>
+          </div>
+        `;
         div.onclick = () => {
           inv.unequip(slot);
           this.game.player.recalcStats();
           this.updateInventoryModal();
         };
       } else {
-        div.innerHTML = `<span class="slot-name">${slot}</span><span class="slot-empty">(비어있음)</span>`;
+        div.innerHTML = `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <img src="${iconSrc}" style="width:28px; height:28px; border-radius:4px; opacity:0.35; filter:grayscale(1);">
+            <div>
+              <div class="slot-name">${slot}</div>
+              <div class="slot-empty">(비어있음)</div>
+            </div>
+          </div>
+        `;
       }
       equipContainer.appendChild(div);
     });
@@ -171,8 +197,12 @@ export class UIManager {
       const slot = document.createElement('div');
       slot.className = 'bag-slot';
       if (item) {
+        const iconSrc = `./assets/items/item_${item.slot.toLowerCase()}.png`;
         slot.style.borderColor = item.color;
-        slot.innerHTML = `<span style="color:${item.color}; font-size:11px;">${item.name}</span>`;
+        slot.innerHTML = `
+          <img src="${iconSrc}" style="width:24px; height:24px; pointer-events:none;">
+          <span style="color:${item.color}; font-size:8px; line-height:1; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:38px;">${item.name}</span>
+        `;
         slot.title = `클릭하여 장착: ${item.name}`;
         slot.onclick = () => {
           inv.equip(i);

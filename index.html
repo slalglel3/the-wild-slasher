@@ -150,6 +150,23 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal 4: Player Death & Revive Modal -->
+    <div id="modal-revive" class="game-modal" style="display:none;">
+      <div class="modal-box text-center">
+        <div class="modal-header">
+          <h3 style="color:#ff5555;">💀 전투 불능 (사망)</h3>
+        </div>
+        <div class="modal-body rebirth-content">
+          <p class="rebirth-desc">
+            야생의 위험 속에서 쓰러졌습니다.<br>
+            현재 월드의 안전 스폰 거점으로 귀환하여 부활합니다.<br>
+            <strong style="color:#ffcc00;">* 부활 페널티: 경험치 20%가 손실됩니다.</strong>
+          </p>
+          <button id="btn-do-revive" class="btn-do-rebirth" style="background: linear-gradient(90deg, #c53030, #e53e3e);">부활하기 (거점 귀환)</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./src/main.js"></script>
