@@ -13,6 +13,8 @@ import { UIManager } from '../ui/UIManager.js';
 import { PlaytestBot } from './Bot.js';
 import { audio } from './Audio.js';
 import { DropItem } from '../entities/DropItem.js';
+import { SaveSystem } from '../systems/SaveSystem.js';
+import { InventorySystem } from '../systems/InventorySystem.js';
 
 export class Game {
   constructor(canvas) {
@@ -46,6 +48,24 @@ export class Game {
 
     // Initial map and player spawn
     this.loadBiomeWorld();
+
+    // Multi-Character Slot & Auto-Save Initialization
+    const curSlot = SaveSystem.getCurrentSlotId();
+    const loaded = SaveSystem.loadCharacter(curSlot, this);
+    if (!loaded) {
+      SaveSystem.createCharacter(curSlot, '야생용사', 'WARRIOR');
+      SaveSystem.loadCharacter(curSlot, this);
+    }
+
+    // Auto-save listeners
+    window.addEventListener('beforeunload', () => {
+      SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
+      }
+    });
 
     // Start Audio on first user interaction
     const unlockAudio = () => {
@@ -176,6 +196,7 @@ export class Game {
       life: 2.0
     });
     this.uiManager.closeModal();
+    SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
   }
 
   advanceToNextBiome() {
@@ -183,6 +204,7 @@ export class Game {
     const hasNext = this.biomeManager.advanceToNextTier();
     if (hasNext) {
       this.loadBiomeWorld();
+      SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
     } else {
       this.floatingTexts.push({
         x: this.player.x,
@@ -200,6 +222,7 @@ export class Game {
     audio.playRebirth();
     const result = this.rebirthSystem.performRebirth(this.player, this.biomeManager, newClass);
     this.loadBiomeWorld();
+    SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
     this.floatingTexts.push({
       x: this.player.x,
       y: this.player.y - 50,
@@ -311,6 +334,13 @@ export class Game {
     // 10. Render Frame (including Minimap)
     this.renderer.render(this);
 
+    // Auto-save character every 20 seconds
+    this.autoSaveTimer = (this.autoSaveTimer || 20) - dt;
+    if (this.autoSaveTimer <= 0) {
+      this.autoSaveTimer = 20;
+      SaveSystem.saveCharacter(SaveSystem.getCurrentSlotId(), this);
+    }
+
     this.input.consumeTriggers();
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -343,11 +373,11 @@ export class Game {
         audio.playChestOpen();
         this.particles.spawnChestOpenFX(chX, chY);
 
-        // Diablo-style loot: 2 to 3 high-tier items
+        // Diablo-style loot: 2 to 3 items matched to current player level
         const dropCount = 2 + Math.floor(Math.random() * 2);
         for (let i = 0; i < dropCount; i++) {
-          const itemTier = this.biomeManager.currentTierLevel;
-          const item = p.inventory.rollItem(itemTier);
+          const itemLevel = Math.max(1, p.level);
+          const item = InventorySystem.generateItem(itemLevel, p.derived.magicFind);
           this.dropItems.push(new DropItem(
             chX + (Math.random() * 30 - 15),
             chY + (Math.random() * 30 - 15),

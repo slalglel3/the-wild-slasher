@@ -1,15 +1,20 @@
 // UI Manager: Landscape Mobile HUD & Modals
+import { SaveSystem } from '../systems/SaveSystem.js';
 
 export class UIManager {
   constructor(game) {
     this.game = game;
-    this.activeModal = null; // 'STATS', 'INVENTORY', 'REBIRTH', null
+    this.activeModal = null; // 'STATS', 'INVENTORY', 'REBIRTH', 'SLOTS', null
     this.selectedItemIndex = null;
+    this.selectedBagIndex = null;
+    this.pendingCreateSlotId = null;
     this.bindDOM();
   }
 
   bindDOM() {
     // Buttons on Top HUD
+    const slotsBtn = document.getElementById('btn-slots');
+    if (slotsBtn) slotsBtn.addEventListener('click', () => this.toggleModal('SLOTS'));
     document.getElementById('btn-stats').addEventListener('click', () => this.toggleModal('STATS'));
     document.getElementById('btn-inventory').addEventListener('click', () => this.toggleModal('INVENTORY'));
     document.getElementById('btn-rebirth').addEventListener('click', () => this.toggleModal('REBIRTH'));
@@ -82,10 +87,21 @@ export class UIManager {
     if (equipBtn) {
       equipBtn.addEventListener('click', () => {
         if (this.selectedBagIndex !== null) {
-          this.game.player.inventory.equip(this.selectedBagIndex);
-          this.game.player.recalcStats();
-          document.getElementById('modal-item-detail').style.display = 'none';
-          this.updateInventoryModal();
+          const res = this.game.player.inventory.equip(this.selectedBagIndex, this.game.player.level);
+          if (!res.success) {
+            this.game.floatingTexts.push({
+              x: this.game.player.x,
+              y: this.game.player.y - 35,
+              text: res.reason,
+              color: '#ff4444',
+              scale: 1.1,
+              life: 1.2
+            });
+          } else {
+            this.game.player.recalcStats();
+            document.getElementById('modal-item-detail').style.display = 'none';
+            this.updateInventoryModal();
+          }
         }
       });
     }
@@ -123,6 +139,29 @@ export class UIManager {
       });
     }
 
+    // Create Character Modal Actions
+    const createSlotClose = document.getElementById('btn-create-slot-close');
+    if (createSlotClose) {
+      createSlotClose.addEventListener('click', () => {
+        document.getElementById('modal-create-slot').style.display = 'none';
+      });
+    }
+
+    const confirmCreateBtn = document.getElementById('btn-confirm-create-char');
+    if (confirmCreateBtn) {
+      confirmCreateBtn.addEventListener('click', () => {
+        const input = document.getElementById('input-char-name');
+        const name = (input.value || '').trim() || '야생용사';
+        if (this.pendingCreateSlotId !== null) {
+          SaveSystem.createCharacter(this.pendingCreateSlotId, name, 'WARRIOR');
+          SaveSystem.loadCharacter(this.pendingCreateSlotId, this.game);
+          document.getElementById('modal-create-slot').style.display = 'none';
+          this.closeModal();
+          this.game.loadBiomeWorld();
+        }
+      });
+    }
+
     // Stat allocation buttons
     ['STR', 'DEX', 'INT', 'VIT', 'LUK'].forEach(st => {
       const btn = document.getElementById(`btn-add-${st.toLowerCase()}`);
@@ -153,6 +192,7 @@ export class UIManager {
       if (modalName === 'STATS') this.updateStatsModal();
       if (modalName === 'INVENTORY') this.updateInventoryModal();
       if (modalName === 'REBIRTH') this.updateRebirthModal();
+      if (modalName === 'SLOTS') this.updateSlotsModal();
     }
   }
 
@@ -314,10 +354,15 @@ export class UIManager {
 
     document.getElementById('item-detail-name').innerText = item.name;
     document.getElementById('item-detail-name').style.color = item.color;
-    document.getElementById('item-detail-slot').innerText = `[${item.rarity.name}] ${item.slot}`;
+    document.getElementById('item-detail-slot').innerText = `[${item.rarity.name}] ${item.slot} (아이템 Lv.${item.itemLevel || item.tier || 1})`;
 
     // Format stats summary
     const statsLines = [];
+    const pLevel = this.game.player.level;
+    const reqLvl = item.reqLevel || 1;
+    const canEquip = pLevel >= reqLvl;
+    statsLines.push(`<span style="color:${canEquip ? '#48bb78' : '#f56565'}; font-weight:bold;">• 착용 요구 레벨: Lv.${reqLvl} (내 레벨: Lv.${pLevel})</span>`);
+
     if (item.stats.attack) statsLines.push(`• 공격력: +${item.stats.attack}`);
     if (item.stats.defense) statsLines.push(`• 방어력: +${item.stats.defense}`);
     if (item.stats.hp) statsLines.push(`• 최대 생명력: +${item.stats.hp}`);
@@ -337,6 +382,84 @@ export class UIManager {
 
     document.getElementById('item-detail-stats').innerHTML = statsLines.join('<br>') || '추가 능력치 없음';
     modal.style.display = 'flex';
+  }
+
+  updateSlotsModal() {
+    const container = document.getElementById('slots-grid-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const slots = SaveSystem.getSlots();
+    const currentSlotId = SaveSystem.getCurrentSlotId();
+
+    slots.forEach(s => {
+      const card = document.createElement('div');
+      card.style.background = s.slotId === currentSlotId ? 'rgba(49, 130, 206, 0.25)' : 'rgba(26, 32, 44, 0.85)';
+      card.style.border = s.slotId === currentSlotId ? '2px solid #3182ce' : '1px solid #4a5568';
+      card.style.borderRadius = '8px';
+      card.style.padding = '12px';
+      card.style.display = 'flex';
+      card.style.flexDirection = 'column';
+      card.style.justifyContent = 'space-between';
+      card.style.gap = '8px';
+
+      if (s.exists) {
+        card.innerHTML = `
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:bold; color:#00ffcc; font-size:13px;">[슬롯 ${s.slotId + 1}] ${s.slotId === currentSlotId ? '★ 현재 플레이 중' : ''}</span>
+              <span style="font-size:10px; color:#a0aec0;">${s.updatedAt}</span>
+            </div>
+            <div style="font-size:15px; font-weight:bold; color:#fff; margin-top:4px;">⚔️ ${s.name}</div>
+            <div style="font-size:12px; color:#ffd700; margin-top:2px;">Lv.${s.level} ${s.className || '전사'} (환생 ${s.rebirthCount}회)</div>
+            <div style="font-size:11px; color:#e2e8f0; margin-top:2px;">지역: ${s.biomeName} (Tier ${s.tierLevel}) | 🪙 ${s.gold} G</div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:6px;">
+            <button class="btn-do-rebirth btn-select-slot" style="flex:1; padding:6px; font-size:12px; background:linear-gradient(90deg, #2b6cb0, #3182ce);">
+              ${s.slotId === currentSlotId ? '이어서 모험' : '선택 플레이'}
+            </button>
+            <button class="btn-do-rebirth btn-delete-slot" style="padding:6px 10px; font-size:12px; background:#e53e3e;">
+              삭제
+            </button>
+          </div>
+        `;
+
+        card.querySelector('.btn-select-slot').onclick = () => {
+          if (s.slotId !== currentSlotId) {
+            // Save current before switching
+            SaveSystem.saveCharacter(currentSlotId, this.game);
+            SaveSystem.loadCharacter(s.slotId, this.game);
+            this.game.loadBiomeWorld();
+          }
+          this.closeModal();
+        };
+
+        card.querySelector('.btn-delete-slot').onclick = () => {
+          if (confirm(`정말로 슬롯 ${s.slotId + 1} (${s.name}) 캐릭터를 삭제하시겠습니까?`)) {
+            SaveSystem.deleteCharacter(s.slotId);
+            this.updateSlotsModal();
+          }
+        };
+      } else {
+        card.innerHTML = `
+          <div style="text-align:center; padding:18px 0;">
+            <div style="font-weight:bold; color:#718096; font-size:13px;">[슬롯 ${s.slotId + 1}] 빈 슬롯</div>
+            <div style="font-size:11px; color:#4a5568; margin-top:4px;">캐릭터가 없습니다</div>
+          </div>
+          <button class="btn-do-rebirth btn-create-slot" style="width:100%; padding:6px; font-size:12px; background:linear-gradient(90deg, #38a169, #48bb78);">
+            ➕ 새 캐릭터 생성
+          </button>
+        `;
+
+        card.querySelector('.btn-create-slot').onclick = () => {
+          this.pendingCreateSlotId = s.slotId;
+          document.getElementById('input-char-name').value = `용사 ${s.slotId + 1}`;
+          document.getElementById('modal-create-slot').style.display = 'flex';
+        };
+      }
+
+      container.appendChild(card);
+    });
   }
 
   updateRebirthModal() {

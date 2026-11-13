@@ -59,8 +59,8 @@ export class InventorySystem {
     return this.items.splice(index, 1)[0];
   }
 
-  // Generate random item drop based on monster tier and player magic find
-  static generateItem(tierLevel = 1, magicFind = 1.0, guaranteedRarity = null) {
+  // Generate random item drop based on monster tier/level and player magic find
+  static generateItem(tierOrLevel = 1, magicFind = 1.0, guaranteedRarity = null) {
     const slots = CONFIG.ITEM_SLOTS;
     const slot = slots[Math.floor(Math.random() * slots.length)];
     
@@ -81,24 +81,39 @@ export class InventorySystem {
     const baseNames = ITEM_BASE_NAMES[slot];
     const baseName = baseNames[Math.min(baseNames.length - 1, Math.floor(Math.random() * baseNames.length))];
 
-    // Roll affixes
+    // Calculate Item Level (1 ~ 100)
+    const itemLevel = Math.max(1, Math.min(100, Math.floor(tierOrLevel)));
+    const reqLevel = Math.max(1, itemLevel - 1);
+
+    // Roll affixes & Stats based on Item Level
+    // Design rule: A Lv.30 Normal item MUST be stronger than a Lv.10 Legendary item!
     const affixes = [];
     const stats = { STR: 0, DEX: 0, INT: 0, VIT: 0, LUK: 0, attack: 0, defense: 0, hp: 0, critChance: 0, speed: 0 };
     
-    // Base stats by slot and tier
-    const tierMult = 1 + (tierLevel - 1) * 0.15;
-    if (slot === 'WEAPON') stats.attack = Math.floor((10 + tierLevel * 4) * rarity.mult);
-    if (slot === 'ARMOR' || slot === 'HELMET') stats.defense = Math.floor((6 + tierLevel * 3) * rarity.mult);
-    if (slot === 'BOOTS') stats.speed = Math.floor(15 + tierLevel * 2);
-    if (slot === 'AMULET' || slot === 'RING') stats.hp = Math.floor((20 + tierLevel * 10) * rarity.mult);
+    // Base stats scaled by itemLevel^1.3
+    const levelPower = Math.pow(itemLevel, 1.3);
+    if (slot === 'WEAPON') {
+      stats.attack = Math.floor((6 + levelPower * 2.0) * rarity.mult);
+    }
+    if (slot === 'ARMOR' || slot === 'HELMET') {
+      stats.defense = Math.floor((4 + levelPower * 1.3) * rarity.mult);
+    }
+    if (slot === 'BOOTS') {
+      stats.speed = Math.floor((12 + itemLevel * 0.7) * Math.min(1.4, rarity.mult));
+      stats.defense = Math.floor((2 + levelPower * 0.6) * rarity.mult);
+    }
+    if (slot === 'AMULET' || slot === 'RING') {
+      stats.hp = Math.floor((20 + levelPower * 3.5) * rarity.mult);
+      if (itemLevel >= 20) stats.critChance = Math.min(25, Number((1.5 + (itemLevel * 0.12) * rarity.mult).toFixed(1)));
+    }
 
-    // Pick unique affixes
+    // Pick unique affixes with level scaling
     const shuffledAffixes = [...AFFIX_NAMES].sort(() => 0.5 - Math.random());
     const pickedAffixes = shuffledAffixes.slice(0, rarity.affixCount);
 
     let prefix = '';
     pickedAffixes.forEach((aff, idx) => {
-      const val = Math.floor((aff.min + Math.random() * (aff.max - aff.min)) * tierMult * (rarity.mult * 0.8));
+      const val = Math.floor((aff.min + Math.random() * (aff.max - aff.min)) * (1 + itemLevel * 0.08) * (rarity.mult * 0.8));
       stats[aff.stat] = (stats[aff.stat] || 0) + val;
       affixes.push({ name: aff.name, stat: aff.stat, value: val });
       if (idx === 0) prefix = aff.name + ' ';
@@ -106,13 +121,16 @@ export class InventorySystem {
 
     return {
       id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-      name: prefix + baseName,
+      name: `[Lv.${itemLevel}] ${prefix}${baseName}`,
+      baseName,
       slot,
       rarity: rarityKey,
       color: rarity.color,
+      itemLevel,
+      reqLevel,
       stats,
       affixes,
-      tier: tierLevel
+      tier: itemLevel
     };
   }
 
@@ -131,9 +149,13 @@ export class InventorySystem {
     return null;
   }
 
-  equip(index) {
+  equip(index, playerLevel = 100) {
     const item = this.items[index];
-    if (!item) return false;
+    if (!item) return { success: false, reason: '아이템이 존재하지 않습니다.' };
+
+    if (item.reqLevel && playerLevel < item.reqLevel) {
+      return { success: false, reason: `착용 불가: 요구 레벨 Lv.${item.reqLevel} (현재 Lv.${playerLevel})` };
+    }
 
     const currentEquip = this.equipment[item.slot];
     this.equipment[item.slot] = item;
@@ -142,7 +164,7 @@ export class InventorySystem {
     if (currentEquip) {
       this.items.push(currentEquip);
     }
-    return true;
+    return { success: true };
   }
 
   unequip(slot) {

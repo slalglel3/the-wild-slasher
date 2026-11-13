@@ -46,6 +46,7 @@
 
       <!-- Right: Action Buttons -->
       <div class="hud-section hud-right">
+        <button id="btn-slots" class="hud-btn" style="background:#2c3e50;">👤 슬롯</button>
         <button id="btn-stats" class="hud-btn">스탯 (C)</button>
         <button id="btn-inventory" class="hud-btn">가방 (I)</button>
         <button id="btn-rebirth" class="hud-btn btn-rebirth-style">환생 (R)</button>
@@ -189,6 +190,34 @@
             <strong style="color:#ffcc00;">* 부활 페널티: 경험치 20%가 손실됩니다.</strong>
           </p>
           <button id="btn-do-revive" class="btn-do-rebirth" style="background: linear-gradient(90deg, #c53030, #e53e3e);">부활하기 (거점 귀환)</button>
+        </div>
+      </div>
+    </div>
+    <!-- Modal 5: Multi-Character Slot Selection Modal -->
+    <div id="modal-slots" class="game-modal" style="display:none; z-index:20000;">
+      <div class="modal-box modal-wide" style="max-width:580px;">
+        <div class="modal-header">
+          <h3>👤 캐릭터 슬롯 (선택 / 생성 / 관리)</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="slots-grid-container" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 6: Create Character Modal -->
+    <div id="modal-create-slot" class="game-modal" style="display:none; z-index:25000;">
+      <div class="modal-box" style="max-width:340px; text-align:center;">
+        <div class="modal-header">
+          <h4>신규 캐릭터 생성</h4>
+          <button id="btn-create-slot-close" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex; flex-direction:column; gap:12px;">
+          <div style="font-size:12px; color:#aaa;">캐릭터 닉네임을 입력하세요:</div>
+          <input id="input-char-name" type="text" maxlength="10" placeholder="예: 야생전사" style="padding:8px 12px; font-size:14px; background:#111; color:#fff; border:1px solid #4a5568; border-radius:4px; text-align:center;">
+          <div style="font-size:11px; color:#ffd700;">기본 직업: ⚔️ 전사 (Warrior)</div>
+          <button id="btn-confirm-create-char" class="btn-do-rebirth" style="background:linear-gradient(90deg, #2b6cb0, #3182ce);">모험 시작하기</button>
         </div>
       </div>
     </div>

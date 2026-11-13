@@ -536,16 +536,16 @@ export class Renderer {
     ctx.restore();
   }
 
-  // Interactive Player-Centered Radar Minimap
+  // Interactive Player-Centered Radar Minimap (Positioned safely below top HUD on left side)
   renderMinimap(ctx, game, W, H) {
     const map = game.map;
     const player = game.player;
     if (!map || !player) return;
 
     ctx.save();
-    const mmRadius = 52;
-    const mmCenterX = W - mmRadius - 16;
-    const mmCenterY = 62;
+    const mmRadius = 46;
+    const mmCenterX = 60;
+    const mmCenterY = 112; // 66px ~ 158px: safely below 48px top-hud bar with 18px margin!
 
     // Outer Circular Radar Frame & Background
     ctx.beginPath();

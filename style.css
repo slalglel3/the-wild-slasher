@@ -441,3 +441,15 @@ html, body {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+/* Character Slot Select & Detail */
+.slot-card {
+  background: rgba(26, 32, 44, 0.9);
+  border: 1px solid #4a5568;
+  border-radius: 8px;
+  padding: 10px;
+}
+.slot-active {
+  border-color: #3182ce;
+  background: rgba(49, 130, 206, 0.25);
+}
