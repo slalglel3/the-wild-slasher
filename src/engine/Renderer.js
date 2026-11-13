@@ -811,8 +811,18 @@ export class Renderer {
       if (player.mp < skill.cost) {
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 50, 150, 0.45)';
+        ctx.fillStyle = 'rgba(20, 20, 40, 0.65)';
         ctx.fill();
+      }
+
+      if (cost > 0) {
+        ctx.fillStyle = player.mp < skill.cost ? '#f87171' : '#38bdf8';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(`MP ${cost}`, x, y - r - 4);
+        ctx.shadowBlur = 0;
       }
 
       ctx.fillStyle = '#f0f0f0';

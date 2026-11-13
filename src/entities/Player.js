@@ -114,9 +114,9 @@ export class Player extends Entity {
     this.recalcStats();
     this.skillSystem.update(dt, this.derived.cdr);
 
-    // Natural regen
-    this.hp = Math.min(this.derived.maxHp, this.hp + (this.derived.maxHp * 0.015 + 2) * dt);
-    this.mp = Math.min(this.derived.maxMp, this.mp + (this.derived.maxMp * 0.05 + 5) * dt);
+    // Natural regen: Low passive mana regen so player relies on active hits & combat
+    this.hp = Math.min(this.derived.maxHp, this.hp + (this.derived.maxHp * 0.015 + 1.5) * dt);
+    this.mp = Math.min(this.derived.maxMp, this.mp + (this.derived.maxMp * 0.01 + 0.8) * dt);
 
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
     if (this.slashAnimTimer > 0) this.slashAnimTimer -= dt;
@@ -298,6 +298,7 @@ export class Player extends Entity {
         maxLife: 0.2
       });
 
+      let hitMonster = false;
       monsters.forEach(m => {
         if (!m.alive) return;
         const dist = this.distanceTo(m);
@@ -306,64 +307,95 @@ export class Player extends Entity {
           if (diffAng < Math.PI * 0.45 || diffAng > Math.PI * 1.55) {
             const rawDmg = this.derived.minDmg + Math.random() * (this.derived.maxDmg - this.derived.minDmg);
             this.applyDamageToMonster(m, rawDmg, floatingTexts, particles, true);
+            hitMonster = true;
           }
         }
       });
-    }
 
-    if (input.triggerWhirlwind && this.skillSystem.canCast('WHIRLWIND', this.mp)) {
-      this.skillSystem.cast('WHIRLWIND', this.derived.cdr);
-      this.mp -= this.skillSystem.skills.WHIRLWIND.cost;
-      audio.playWhirlwind();
-      this.whirlwindTimer = 1.2;
-    }
-
-    if (input.triggerDash && this.skillSystem.canCast('DASH', this.mp)) {
-      this.skillSystem.cast('DASH', this.derived.cdr);
-      this.mp -= this.skillSystem.skills.DASH.cost;
-      audio.playDash();
-      this.dashTimer = this.skillSystem.skills.DASH.duration;
-      this.invincibleTimer = this.dashTimer + 0.1;
-      const len = Math.hypot(input.moveX, input.moveY);
-      if (len > 0.1) {
-        this.dashDir = { x: input.moveX / len, y: input.moveY / len };
-      } else {
-        this.dashDir = { x: this.facing, y: 0 };
+      // Hit-to-Gain Mana System: Recover 8 MP on successful hit
+      if (hitMonster) {
+        const gain = 8;
+        this.mp = Math.min(this.derived.maxMp, this.mp + gain);
+        floatingTexts.push({
+          x: this.x + (Math.random() * 20 - 10),
+          y: this.y - 25,
+          text: `+${gain} MP`,
+          color: '#38bdf8',
+          scale: 0.95,
+          life: 0.55
+        });
       }
     }
 
-    if (input.triggerSlam && this.skillSystem.canCast('GROUND_SLAM', this.mp)) {
-      this.skillSystem.cast('GROUND_SLAM', this.derived.cdr);
-      this.mp -= this.skillSystem.skills.GROUND_SLAM.cost;
-      audio.playSlam();
-      this.slamAnimTimer = 0.35;
-      const range = this.skillSystem.skills.GROUND_SLAM.range;
-
-      this.activeAttacks.push({
-        type: 'SLAM',
-        x: this.x,
-        y: this.y,
-        radius: range,
-        life: 0.35,
-        maxLife: 0.35
-      });
-      particles.spawnSlamShockwave(this.x, this.y, range);
-
-      monsters.forEach(m => {
-        if (m.alive && this.distanceTo(m) <= range) {
-          const rawDmg = (this.derived.minDmg + Math.random() * (this.derived.maxDmg - this.derived.minDmg)) * 2.2;
-          this.applyDamageToMonster(m, rawDmg, floatingTexts, particles, true, true);
-        }
-      });
+    if (input.triggerWhirlwind) {
+      if (this.skillSystem.canCast('WHIRLWIND', this.mp)) {
+        this.skillSystem.cast('WHIRLWIND', this.derived.cdr);
+        this.mp -= this.skillSystem.skills.WHIRLWIND.cost;
+        audio.playWhirlwind();
+        this.whirlwindTimer = 1.2;
+      } else if (this.mp < this.skillSystem.skills.WHIRLWIND.cost && this.skillSystem.skills.WHIRLWIND.timer <= 0) {
+        floatingTexts.push({ x: this.x, y: this.y - 30, text: '마나 부족!', color: '#38bdf8', life: 0.6 });
+      }
     }
 
-    if (input.triggerWarCry && this.skillSystem.canCast('WAR_CRY', this.mp)) {
-      this.skillSystem.cast('WAR_CRY', this.derived.cdr);
-      this.mp -= this.skillSystem.skills.WAR_CRY.cost;
-      audio.playWarCry();
-      this.warcryAnimTimer = 0.5;
-      particles.spawnWarCryAura(this.x, this.y);
-      floatingTexts.push({ x: this.x, y: this.y - 30, text: '전투 함성!!', color: '#ffcc00', life: 1.0 });
+    if (input.triggerDash) {
+      if (this.skillSystem.canCast('DASH', this.mp)) {
+        this.skillSystem.cast('DASH', this.derived.cdr);
+        this.mp -= this.skillSystem.skills.DASH.cost;
+        audio.playDash();
+        this.dashTimer = this.skillSystem.skills.DASH.duration;
+        this.invincibleTimer = this.dashTimer + 0.1;
+        const len = Math.hypot(input.moveX, input.moveY);
+        if (len > 0.1) {
+          this.dashDir = { x: input.moveX / len, y: input.moveY / len };
+        } else {
+          this.dashDir = { x: this.facing, y: 0 };
+        }
+      } else if (this.mp < this.skillSystem.skills.DASH.cost && this.skillSystem.skills.DASH.timer <= 0) {
+        floatingTexts.push({ x: this.x, y: this.y - 30, text: '마나 부족!', color: '#38bdf8', life: 0.6 });
+      }
+    }
+
+    if (input.triggerSlam) {
+      if (this.skillSystem.canCast('GROUND_SLAM', this.mp)) {
+        this.skillSystem.cast('GROUND_SLAM', this.derived.cdr);
+        this.mp -= this.skillSystem.skills.GROUND_SLAM.cost;
+        audio.playSlam();
+        this.slamAnimTimer = 0.35;
+        const range = this.skillSystem.skills.GROUND_SLAM.range;
+
+        this.activeAttacks.push({
+          type: 'SLAM',
+          x: this.x,
+          y: this.y,
+          radius: range,
+          life: 0.35,
+          maxLife: 0.35
+        });
+        particles.spawnSlamShockwave(this.x, this.y, range);
+
+        monsters.forEach(m => {
+          if (m.alive && this.distanceTo(m) <= range) {
+            const rawDmg = (this.derived.minDmg + Math.random() * (this.derived.maxDmg - this.derived.minDmg)) * 2.2;
+            this.applyDamageToMonster(m, rawDmg, floatingTexts, particles, true, true);
+          }
+        });
+      } else if (this.mp < this.skillSystem.skills.GROUND_SLAM.cost && this.skillSystem.skills.GROUND_SLAM.timer <= 0) {
+        floatingTexts.push({ x: this.x, y: this.y - 30, text: '마나 부족!', color: '#38bdf8', life: 0.6 });
+      }
+    }
+
+    if (input.triggerWarCry) {
+      if (this.skillSystem.canCast('WAR_CRY', this.mp)) {
+        this.skillSystem.cast('WAR_CRY', this.derived.cdr);
+        this.mp -= this.skillSystem.skills.WAR_CRY.cost;
+        audio.playWarCry();
+        this.warcryAnimTimer = 0.5;
+        particles.spawnWarCryAura(this.x, this.y);
+        floatingTexts.push({ x: this.x, y: this.y - 30, text: '전투 함성!!', color: '#ffcc00', life: 1.0 });
+      } else if (this.mp < this.skillSystem.skills.WAR_CRY.cost && this.skillSystem.skills.WAR_CRY.timer <= 0) {
+        floatingTexts.push({ x: this.x, y: this.y - 30, text: '마나 부족!', color: '#38bdf8', life: 0.6 });
+      }
     }
   }
 
