@@ -12,6 +12,7 @@ import { Monster } from '../entities/Monster.js';
 import { UIManager } from '../ui/UIManager.js';
 import { PlaytestBot } from './Bot.js';
 import { audio } from './Audio.js';
+import { DropItem } from '../entities/DropItem.js';
 
 export class Game {
   constructor(canvas) {
@@ -249,7 +250,7 @@ export class Game {
       const m = this.monsters[i];
       if (m.alive) {
         if (m.isBoss) bossAlive = true;
-        m.update(dt, this.player, this.floatingTexts, this.particles, this.dropItems);
+        m.update(dt, this.player, this.floatingTexts, this.particles, this.dropItems, this);
       } else {
         m.onDeath(this.player, this.dropItems, this.floatingTexts, this.particles);
         
@@ -268,6 +269,9 @@ export class Game {
 
     // Continuous monster respawn tick
     this.updateRespawnQueue(dt);
+
+    // 5. Update Interactive Treasure Chests
+    this.updateChests(dt);
 
     // 5. Check World Highway Gateway Interaction (Path to Next World)
     const gateTargetX = this.map.portalPos.c * 32;
@@ -309,5 +313,59 @@ export class Game {
 
     this.input.consumeTriggers();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  // Interactive Chests: Open on proximity or attack hit to shower Diablo-tier loot
+  updateChests(dt) {
+    if (!this.map || !this.map.chests || !this.player) return;
+    const p = this.player;
+
+    this.map.chests.forEach(ch => {
+      if (ch.opened) return;
+      const chX = ch.c * 32 + 16;
+      const chY = ch.r * 32 + 16;
+      const dist = Math.hypot(p.x - chX, p.y - chY);
+
+      let triggered = dist < 42;
+
+      if (!triggered && p.activeAttacks) {
+        for (const atk of p.activeAttacks) {
+          if (Math.hypot(atk.x - chX, atk.y - chY) <= (atk.radius || 40)) {
+            triggered = true;
+            break;
+          }
+        }
+      }
+
+      if (triggered) {
+        ch.opened = true;
+        audio.playChestOpen();
+        this.particles.spawnChestOpenFX(chX, chY);
+
+        // Diablo-style loot: 2 to 3 high-tier items
+        const dropCount = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < dropCount; i++) {
+          const itemTier = this.biomeManager.currentTierLevel;
+          const item = p.inventory.rollItem(itemTier);
+          this.dropItems.push(new DropItem(
+            chX + (Math.random() * 30 - 15),
+            chY + (Math.random() * 30 - 15),
+            item
+          ));
+        }
+
+        const bonusExp = Math.floor(120 + this.biomeManager.currentTierLevel * 10);
+        p.addExp(bonusExp, this.floatingTexts);
+
+        this.floatingTexts.push({
+          x: chX,
+          y: chY - 35,
+          text: '★ 보물 상자 개방! 장비 획득! ★',
+          color: '#ffd700',
+          scale: 1.25,
+          life: 1.8
+        });
+      }
+    });
   }
 }

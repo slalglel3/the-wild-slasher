@@ -15,8 +15,8 @@ export class MapGenerator {
         if (r === 0 || r === this.rows - 1 || c === 0 || c === this.cols - 1) {
           grid[r][c] = 1; // Obstacle wall
         } else {
-          // Cellular noise: ~16% natural tree/rock obstacles
-          grid[r][c] = Math.random() < 0.16 ? 1 : 0;
+          // Cellular noise: ~11% natural tree/rock obstacles for wide walkable pathways
+          grid[r][c] = Math.random() < 0.11 ? 1 : 0;
         }
       }
     }
@@ -108,7 +108,8 @@ export class MapGenerator {
     const chests = [];
     const chestCount = 12 + Math.floor(Math.random() * 6);
     for (let i = 0; i < chestCount && walkableCells.length > 0; i++) {
-      chests.push(walkableCells.pop());
+      const cell = walkableCells.pop();
+      chests.push({ r: cell.r, c: cell.c, opened: false });
     }
 
     // Place Monster Spawns (80~120 monsters in large world)

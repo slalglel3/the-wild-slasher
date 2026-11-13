@@ -122,6 +122,23 @@ export class ParticleEngine {
     }
   }
 
+  spawnChestOpenFX(x, y) {
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spd = 40 + Math.random() * 120;
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - 30,
+        color: i % 2 === 0 ? '#ffd700' : '#ffffff',
+        radius: 2.5 + Math.random() * 2.5,
+        life: 0.65,
+        maxLife: 0.65,
+        friction: 0.92
+      });
+    }
+  }
+
   spawnAmbient(camera, biomeKey, width, height) {
     // Light ambient particle drift
     if (this.particles.length > 80) return;

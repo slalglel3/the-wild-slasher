@@ -46,7 +46,7 @@ export class Monster extends Entity {
     }
   }
 
-  update(dt, player, floatingTexts, particles, dropItems) {
+  update(dt, player, floatingTexts, particles, dropItems, game = null) {
     if (!this.alive) return;
 
     this.animTime += dt;
@@ -74,8 +74,8 @@ export class Monster extends Entity {
         // In Attack Range
         if (this.attackCooldown <= 0) {
           this.attackCooldown = this.attackRate;
-          // Monster Attack!
-          player.takeDamage(this.attack, floatingTexts, particles);
+          // Monster Attack! Pass game to trigger player death & revive
+          player.takeDamage(this.attack, floatingTexts, particles, game);
           particles.spawnClawSwipe(player.x, player.y);
         }
       }

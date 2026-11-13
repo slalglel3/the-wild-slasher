@@ -38,6 +38,10 @@ export class InventorySystem {
     };
   }
 
+  rollItem(tierLevel = 1, magicFind = 1.0) {
+    return InventorySystem.generateItem(tierLevel, magicFind);
+  }
+
   // Generate random item drop based on monster tier and player magic find
   static generateItem(tierLevel = 1, magicFind = 1.0) {
     const slots = CONFIG.ITEM_SLOTS;

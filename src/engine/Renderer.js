@@ -196,16 +196,17 @@ export class Renderer {
           }
         }
 
-        // Obstacles (Trees / Rocks)
+        // Obstacles (Trees / Rocks) or Outer Border Cliffs
         if (tileType === 1) {
-          const isRock = (r * 7 + c * 13) % 4 === 0;
+          const isBorder = (r === 0 || r === map.rows - 1 || c === 0 || c === map.cols - 1);
+          const isRock = isBorder || ((r * 7 + c * 13) % 4 === 0);
           if (isRock && rockImg.loaded) {
             ctx.drawImage(rockImg, isoX - 22, isoY - 26, 44, 38);
           } else if (treeImg.loaded) {
             ctx.drawImage(treeImg, isoX - 36, isoY - 76, 72, 82);
           } else {
-            ctx.fillStyle = biome.objectColor;
-            ctx.fillRect(isoX - 10, isoY - halfH - 18, 20, 20);
+            ctx.fillStyle = isBorder ? '#222222' : biome.objectColor;
+            ctx.fillRect(isoX - 14, isoY - halfH - 18, 28, 24);
           }
         }
       }
@@ -252,12 +253,29 @@ export class Renderer {
     map.chests.forEach(ch => {
       const cIsoX = (ch.c - ch.r) * halfW;
       const cIsoY = (ch.c + ch.r) * halfH;
+      ctx.save();
+      if (ch.opened) {
+        ctx.globalAlpha = 0.55;
+      }
       if (chestImg.loaded) {
         ctx.drawImage(chestImg, cIsoX - 18, cIsoY - 24, 36, 36);
       } else {
-        ctx.fillStyle = '#8b5a2b';
+        ctx.fillStyle = ch.opened ? '#553311' : '#8b5a2b';
         ctx.fillRect(cIsoX - 10, cIsoY - 14, 20, 14);
       }
+      if (ch.opened) {
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('(열림)', cIsoX, cIsoY - 26);
+      } else {
+        // Subtle gold sparkle marker
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.arc(cIsoX, cIsoY - 28, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     });
   }
 
@@ -283,32 +301,70 @@ export class Renderer {
     const isMoving = Math.hypot(player.vx, player.vy) > 10;
     const isSlashing = player.slashAnimTimer > 0;
     const isWhirlwind = player.whirlwindTimer > 0;
+    const isSlamming = player.slamAnimTimer > 0;
+    const isDashing = player.dashTimer > 0;
+    const isWarCry = player.warcryAnimTimer > 0;
 
-    // Body Bob
-    const bob = isMoving ? Math.abs(Math.sin(player.animTime * 14)) * 4 : Math.sin(player.animTime * 3) * 1.5;
+    // Body Bob & Aerial leap during Slam
+    let bob = isMoving ? Math.abs(Math.sin(player.animTime * 14)) * 3.5 : Math.sin(player.animTime * 3) * 1.5;
+    if (isSlamming) {
+      bob += Math.sin((player.slamAnimTimer / 0.35) * Math.PI) * 16;
+    }
     const bodyY = isoY - bob;
 
-    // Frame Selection
+    // Frame Selection - 100% Consistent Chibi Sprites
     let currentSprite = this.assets.playerIdle;
-    let sw = 50;
-    let sh = 70;
+    let sw = 48;
+    let sh = 74;
 
-    if (isSlashing) {
-      const slashProgress = 1 - (player.slashAnimTimer / 0.22);
+    if (isWhirlwind) {
+      // Wide spin attack pose
+      const spinSprite = this.assets.playerSlash[1];
+      if (spinSprite && spinSprite.loaded) {
+        currentSprite = spinSprite;
+        sw = 80;
+        sh = 74;
+      }
+    } else if (isSlamming) {
+      // Leap downward smash pose
+      const smashSprite = this.assets.playerSlash[2];
+      if (smashSprite && smashSprite.loaded) {
+        currentSprite = smashSprite;
+        sw = 58;
+        sh = 74;
+      }
+    } else if (isSlashing) {
+      const slashProgress = 1 - (player.slashAnimTimer / 0.24);
       const frameIdx = Math.min(2, Math.max(0, Math.floor(slashProgress * 3)));
       const slashSprite = this.assets.playerSlash[frameIdx];
       if (slashSprite && slashSprite.loaded) {
         currentSprite = slashSprite;
         sw = frameIdx === 1 ? 80 : 54;
-        sh = 72;
+        sh = 74;
+      }
+    } else if (isDashing) {
+      // Low forward dash pose
+      const dashSprite = this.assets.playerRun[1];
+      if (dashSprite && dashSprite.loaded) {
+        currentSprite = dashSprite;
+        sw = 50;
+        sh = 74;
+      }
+    } else if (isWarCry) {
+      // Roar pose with sword held high
+      const roarSprite = this.assets.playerSlash[0];
+      if (roarSprite && roarSprite.loaded) {
+        currentSprite = roarSprite;
+        sw = 54;
+        sh = 74;
       }
     } else if (isMoving) {
       // 4-Frame Dynamic Run Cycle
       const runSprite = this.assets.playerRun[player.runFrame % 4];
       if (runSprite && runSprite.loaded) {
         currentSprite = runSprite;
-        sw = 50;
-        sh = 72;
+        sw = 48;
+        sh = 74;
       }
     }
 
@@ -454,66 +510,167 @@ export class Renderer {
     ctx.restore();
   }
 
-  // Interactive Radar Minimap (110x110)
+  // Interactive Player-Centered Radar Minimap
   renderMinimap(ctx, game, W, H) {
     const map = game.map;
     const player = game.player;
-    if (!map) return;
+    if (!map || !player) return;
 
     ctx.save();
-    const mmSize = 100;
-    const mmX = W - mmSize - 12;
-    const mmY = 56;
+    const mmRadius = 52;
+    const mmCenterX = W - mmRadius - 16;
+    const mmCenterY = 62;
 
-    // Minimap Outer Circular Frame
+    // Outer Circular Radar Frame & Background
     ctx.beginPath();
-    ctx.arc(mmX + mmSize / 2, mmY + mmSize / 2, mmSize / 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(10, 14, 20, 0.85)';
+    ctx.arc(mmCenterX, mmCenterY, mmRadius + 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(mmCenterX, mmCenterY, mmRadius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 16, 26, 0.9)';
     ctx.fill();
     ctx.strokeStyle = '#4a5568';
     ctx.lineWidth = 2.5;
     ctx.stroke();
-    ctx.clip(); // Clip contents within circle
 
-    const scale = mmSize / (map.cols * 32);
-
-    // Draw Next World Gateway icon (Green)
-    const gx = mmX + (map.portalPos.c * 32) * scale;
-    const gy = mmY + (map.portalPos.r * 32) * scale;
-    ctx.fillStyle = game.bossDefeated ? '#00ffff' : '#ff4444';
+    // Radar Concentric Range Ring
     ctx.beginPath();
-    ctx.arc(gx, gy, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(mmCenterX, mmCenterY, mmRadius * 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    // Draw Monsters (Red dots)
-    ctx.fillStyle = '#ff3333';
+    ctx.clip(); // Clip all elements within radar circle
+
+    // Radar Zoom Scale: 850px around player maps to mmRadius
+    const radarRange = 850;
+    const scale = mmRadius / radarRange;
+
+    // 1. Surrounding Obstacle Walls on Radar
+    const pTileC = Math.floor(player.x / 32);
+    const pTileR = Math.floor(player.y / 32);
+    const tileRange = Math.ceil(radarRange / 32);
+
+    ctx.fillStyle = 'rgba(120, 130, 145, 0.35)';
+    for (let dr = -tileRange; dr <= tileRange; dr++) {
+      for (let dc = -tileRange; dc <= tileRange; dc++) {
+        const r = pTileR + dr;
+        const c = pTileC + dc;
+        if (r >= 0 && r < map.rows && c >= 0 && c < map.cols && map.grid[r][c] === 1) {
+          const ox = c * 32 + 16;
+          const oy = r * 32 + 16;
+          const rx = mmCenterX + (ox - player.x) * scale;
+          const ry = mmCenterY + (oy - player.y) * scale;
+          const dSq = (rx - mmCenterX) ** 2 + (ry - mmCenterY) ** 2;
+          if (dSq < (mmRadius - 2) ** 2) {
+            ctx.fillRect(rx - 1.5, ry - 1.5, 3, 3);
+          }
+        }
+      }
+    }
+
+    // 2. Chests (Gold squares)
+    if (map.chests) {
+      map.chests.forEach(ch => {
+        if (ch.opened) return;
+        const cx = ch.c * 32 + 16;
+        const cy = ch.r * 32 + 16;
+        const rx = mmCenterX + (cx - player.x) * scale;
+        const ry = mmCenterY + (cy - player.y) * scale;
+        const distSq = (rx - mmCenterX) ** 2 + (ry - mmCenterY) ** 2;
+        if (distSq < (mmRadius - 3) ** 2) {
+          ctx.fillStyle = '#ffd700';
+          ctx.fillRect(rx - 2.5, ry - 2.5, 5, 5);
+        }
+      });
+    }
+
+    // 3. Monsters (Red dots, Boss is Golden skull/circle)
     game.monsters.forEach(m => {
-      if (m.alive) {
-        const mx = mmX + m.x * scale;
-        const my = mmY + m.y * scale;
-        ctx.beginPath();
-        ctx.arc(mx, my, m.isBoss ? 4.5 : 2, 0, Math.PI * 2);
-        if (m.isBoss) ctx.fillStyle = '#ffff00';
-        ctx.fill();
-        ctx.fillStyle = '#ff3333';
+      if (!m.alive) return;
+      const rx = mmCenterX + (m.x - player.x) * scale;
+      const ry = mmCenterY + (m.y - player.y) * scale;
+      const distSq = (rx - mmCenterX) ** 2 + (ry - mmCenterY) ** 2;
+
+      if (distSq < (mmRadius - 3) ** 2) {
+        if (m.isBoss) {
+          // Boss: Glowing Yellow with Pulsing Ring
+          ctx.beginPath();
+          ctx.arc(rx, ry, 5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffff00';
+          ctx.fill();
+          ctx.strokeStyle = '#ff0000';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ff3344';
+          ctx.fill();
+        }
       }
     });
 
-    // Draw Player (Yellow Arrow/Dot)
-    const px = mmX + player.x * scale;
-    const py = mmY + player.y * scale;
+    // 4. Next World Gateway & Navigation Indicator
+    const gateX = map.portalPos.c * 32 + 16;
+    const gateY = map.portalPos.r * 32 + 16;
+    const gDiffX = (gateX - player.x) * scale;
+    const gDiffY = (gateY - player.y) * scale;
+    const gDist = Math.hypot(gDiffX, gDiffY);
+
+    if (gDist < mmRadius - 6) {
+      // Gateway is in radar view
+      ctx.fillStyle = game.bossDefeated ? '#00ffff' : '#ff4444';
+      ctx.beginPath();
+      ctx.arc(mmCenterX + gDiffX, mmCenterY + gDiffY, 5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Gateway is outside radar view -> Compass Navigation Arrow on radar border!
+      const gAngle = Math.atan2(gDiffY, gDiffX);
+      const edgeX = mmCenterX + Math.cos(gAngle) * (mmRadius - 7);
+      const edgeY = mmCenterY + Math.sin(gAngle) * (mmRadius - 7);
+
+      ctx.save();
+      ctx.translate(edgeX, edgeY);
+      ctx.rotate(gAngle);
+      ctx.fillStyle = game.bossDefeated ? '#00ffff' : '#ff4444';
+      ctx.beginPath();
+      ctx.moveTo(5, 0);
+      ctx.lineTo(-4, -4);
+      ctx.lineTo(-2, 0);
+      ctx.lineTo(-4, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 5. Center Player (ALWAYS at EXACT CENTER mmCenterX, mmCenterY!)
     ctx.fillStyle = '#00ffcc';
     ctx.beginPath();
-    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.arc(mmCenterX, mmCenterY, 4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Facing direction indicator
+    const facingAngle = player.targetAngle || 0;
+    ctx.beginPath();
+    ctx.moveTo(mmCenterX, mmCenterY);
+    ctx.lineTo(mmCenterX + Math.cos(facingAngle) * 9, mmCenterY + Math.sin(facingAngle) * 9);
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
     ctx.restore();
 
     // Minimap Title
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
     ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('미니맵', mmX + mmSize / 2, mmY + mmSize + 11);
+    ctx.fillText('레이더 미니맵', mmCenterX, mmCenterY + mmRadius + 12);
   }
 
   renderAttackVFX(ctx, player) {

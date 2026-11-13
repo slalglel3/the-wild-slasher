@@ -36,8 +36,11 @@ export class Player extends Entity {
     this.dashTimer = 0;
     this.whirlwindTimer = 0;
     this.slashAnimTimer = 0;
+    this.slamAnimTimer = 0;
+    this.warcryAnimTimer = 0;
     this.hazardTickTimer = 0;
     this.inHazard = false;
+    this.game = null;
 
     // Animation Frame Timers (Accurate leg & arm movement)
     this.runFrame = 0;
@@ -94,10 +97,9 @@ export class Player extends Entity {
     return leveledUp;
   }
 
-  // Penalty on Revive: Lose 20% experience
+  // Penalty on Revive: Lose 20% of current accumulated experience
   penalizeOnRevive() {
-    const penalty = Math.floor(this.expToNext * 0.2);
-    this.exp = Math.max(0, this.exp - penalty);
+    this.exp = Math.max(0, Math.floor(this.exp * 0.8));
     this.hp = this.derived.maxHp;
     this.mp = this.derived.maxMp;
     this.isDead = false;
@@ -106,6 +108,7 @@ export class Player extends Entity {
 
   update(dt, input, map, monsters, dropItems, floatingTexts, particles, game) {
     if (this.isDead) return;
+    if (game) this.game = game;
 
     this.animTime += dt;
     this.recalcStats();
@@ -117,6 +120,8 @@ export class Player extends Entity {
 
     if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
     if (this.slashAnimTimer > 0) this.slashAnimTimer -= dt;
+    if (this.slamAnimTimer > 0) this.slamAnimTimer -= dt;
+    if (this.warcryAnimTimer > 0) this.warcryAnimTimer -= dt;
 
     // Check Current Tile for Hazards (Poison swamp, lava, etc.)
     const currC = Math.floor(this.x / 32);
@@ -214,40 +219,63 @@ export class Player extends Entity {
     this.handleSkills(input, monsters, floatingTexts, particles);
   }
 
-  // Clamping to map borders + Obstacle Wall Collision
+  // Clamping to map borders + Smooth Sliding Circle Collision
   moveWithCollision(dx, dy, map) {
     if (!map || !map.grid) {
       this.x += dx;
       this.y += dy;
       return;
     }
-    const minBound = 36;
+    const minBound = 48;
     const maxBoundX = (map.cols - 1.5) * 32;
     const maxBoundY = (map.rows - 1.5) * 32;
+    const playerRadius = 10;
+    const obstacleRadius = 12;
+    const minDist = playerRadius + obstacleRadius; // 22px
 
-    // Test X-axis movement
-    const targetX = Math.max(minBound, Math.min(maxBoundX, this.x + dx));
-    const targetGridCX = Math.floor(targetX / 32);
-    const currGridRY = Math.floor(this.y / 32);
-
-    if (currGridRY >= 0 && currGridRY < map.rows && targetGridCX >= 0 && targetGridCX < map.cols) {
-      if (map.grid[currGridRY] && map.grid[currGridRY][targetGridCX] !== 1) {
-        this.x = targetX;
+    const isColliding = (checkX, checkY) => {
+      if (checkX < minBound || checkX > maxBoundX || checkY < minBound || checkY > maxBoundY) {
+        return true;
       }
-    } else {
+      const centerC = Math.floor(checkX / 32);
+      const centerR = Math.floor(checkY / 32);
+
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const r = centerR + dr;
+          const c = centerC + dc;
+          if (r >= 0 && r < map.rows && c >= 0 && c < map.cols) {
+            if (map.grid[r][c] === 1) {
+              const ox = c * 32 + 16;
+              const oy = r * 32 + 16;
+              const distSq = (checkX - ox) ** 2 + (checkY - oy) ** 2;
+              if (distSq < minDist * minDist) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    // 1. Try full movement
+    const targetX = Math.max(minBound, Math.min(maxBoundX, this.x + dx));
+    const targetY = Math.max(minBound, Math.min(maxBoundY, this.y + dy));
+
+    if (!isColliding(targetX, targetY)) {
+      this.x = targetX;
+      this.y = targetY;
+      return;
+    }
+
+    // 2. Slide along X-axis
+    if (!isColliding(targetX, this.y)) {
       this.x = targetX;
     }
 
-    // Test Y-axis movement
-    const targetY = Math.max(minBound, Math.min(maxBoundY, this.y + dy));
-    const targetGridRY = Math.floor(targetY / 32);
-    const currGridCX = Math.floor(this.x / 32);
-
-    if (targetGridRY >= 0 && targetGridRY < map.rows && currGridCX >= 0 && currGridCX < map.cols) {
-      if (map.grid[targetGridRY] && map.grid[targetGridRY][currGridCX] !== 1) {
-        this.y = targetY;
-      }
-    } else {
+    // 3. Slide along Y-axis
+    if (!isColliding(this.x, targetY)) {
       this.y = targetY;
     }
   }
@@ -255,7 +283,7 @@ export class Player extends Entity {
   handleSkills(input, monsters, floatingTexts, particles) {
     if (input.triggerSlash && this.skillSystem.canCast('SLASH', this.mp)) {
       this.skillSystem.cast('SLASH', this.derived.cdr);
-      this.slashAnimTimer = 0.22;
+      this.slashAnimTimer = 0.24;
       audio.playSlash();
       const range = this.skillSystem.skills.SLASH.range;
       const angle = this.targetAngle;
@@ -266,8 +294,8 @@ export class Player extends Entity {
         y: this.y,
         angle,
         radius: range,
-        life: 0.18,
-        maxLife: 0.18
+        life: 0.2,
+        maxLife: 0.2
       });
 
       monsters.forEach(m => {
@@ -308,6 +336,7 @@ export class Player extends Entity {
       this.skillSystem.cast('GROUND_SLAM', this.derived.cdr);
       this.mp -= this.skillSystem.skills.GROUND_SLAM.cost;
       audio.playSlam();
+      this.slamAnimTimer = 0.35;
       const range = this.skillSystem.skills.GROUND_SLAM.range;
 
       this.activeAttacks.push({
@@ -332,6 +361,7 @@ export class Player extends Entity {
       this.skillSystem.cast('WAR_CRY', this.derived.cdr);
       this.mp -= this.skillSystem.skills.WAR_CRY.cost;
       audio.playWarCry();
+      this.warcryAnimTimer = 0.5;
       particles.spawnWarCryAura(this.x, this.y);
       floatingTexts.push({ x: this.x, y: this.y - 30, text: '전투 함성!!', color: '#ffcc00', life: 1.0 });
     }
@@ -358,7 +388,7 @@ export class Player extends Entity {
     particles.spawnBloodSparks(monster.x, monster.y, isCrit ? 12 : 6);
   }
 
-  takeDamage(amount, floatingTexts, particles, game, label = null) {
+  takeDamage(amount, floatingTexts, particles, game = null, label = null) {
     if (this.invincibleTimer > 0 || this.isDead) return;
     const reduced = Math.max(1, Math.floor(amount - this.derived.defense * 0.4));
     this.hp -= reduced;
@@ -377,8 +407,9 @@ export class Player extends Entity {
     if (this.hp <= 0) {
       this.hp = 0;
       this.isDead = true;
-      if (game && game.onPlayerDeath) {
-        game.onPlayerDeath();
+      const targetGame = game || this.game;
+      if (targetGame && targetGame.onPlayerDeath) {
+        targetGame.onPlayerDeath();
       }
     }
   }

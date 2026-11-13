@@ -31,6 +31,7 @@ export class UIManager {
     if (reviveBtn) {
       reviveBtn.addEventListener('click', () => {
         this.game.executeRevive();
+        this.closeModal();
       });
     }
 
